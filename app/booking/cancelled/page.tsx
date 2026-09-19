@@ -1,0 +1,3 @@
+import {CTA} from '@/components/ui';
+export const metadata={title:'Checkout Paused',robots:{index:false,follow:false}};
+export default function Cancelled(){return <div className="success-panel container content-section"><p className="eyebrow">Take your time</p><h1 style={{fontSize:'3.8rem'}}>Your checkout is paused.</h1><p>Leaving checkout does not confirm a booking. Your selected time may be temporarily held until checkout expires. You can start again to review your price and available times.</p><p>If you saw a successful payment, check your email or contact us before paying again.</p><CTA/></div>;}
