@@ -1,23 +1,29 @@
 import {z} from 'zod';
 import {formatInTimeZone, fromZonedTime} from 'date-fns-tz';
-import {defaultConfig, type QuoteInput, type Service} from './pricing';
+import {type QuoteInput, type Service} from './pricing';
 
 export const TIME_ZONE = 'America/New_York';
 export const START_INTERVAL = 30;
 export const FINISH_GRACE_MINUTES = 60;
 export const BOOKING_HORIZON_DAYS = 90;
 export const SCHEDULE_LOCK = 72901642;
+export const DURATION_INCREMENT = 5;
 const minutes = z.number().int().min(15).max(540).multipleOf(15);
 export const schedulingSchema = z.object({
   teamCapacity: z.number().int().min(1).max(20),
   serviceMinutes: z.object({standard: minutes, deep: minutes, move: minutes}),
-  addonMinutes: z.record(z.string().regex(/^[a-z_]+$/), z.number().int().min(0).max(240).multipleOf(15)),
+  addonMinutes: z.record(z.string().regex(/^[a-z_]+$/), z.number().int().min(0).max(240)),
 });
 export type SchedulingConfig = z.infer<typeof schedulingSchema>;
+// Additional hands-on work per unit. Appliance cycles run during the base clean.
+export const defaultAddonMinutes: Record<string,number> = {
+  dishes:15, laundry:20, fold:15, put_away:10, linens:10,
+  oven:30, fridge:20, cabinets:30, windows:3, pet_hair:20,
+};
 export const defaultScheduling: SchedulingConfig = {
   teamCapacity: 1,
   serviceMinutes: {standard: 120, deep: 180, move: 240},
-  addonMinutes: Object.fromEntries(defaultConfig.addons.map(a => [a.id, 30])),
+  addonMinutes: {...defaultAddonMinutes},
 };
 export type Interval = {starts_at: string; ends_at: string};
 export type Occupancy = Interval & {id: string; kind: 'booking'|'hold'|'block'; label?: string; booking_id?: string};
@@ -42,8 +48,11 @@ export function bookingHours(day: string): Interval|null {
   const hours=workingHours(day);
   return hours?{...hours,ends_at:new Date(Date.parse(hours.ends_at)+FINISH_GRACE_MINUTES*60000).toISOString()}:null;
 }
+export const addonMinutesPerUnit = (id:string,config:SchedulingConfig) => config.addonMinutes[id]??defaultAddonMinutes[id]??30;
 export function estimateMinutes(input: Pick<QuoteInput,'service'|'addons'>, config: SchedulingConfig): number {
-  return config.serviceMinutes[input.service]+Object.entries(input.addons).reduce((sum,[id,quantity]) => sum+(config.addonMinutes[id]??30)*quantity,0);
+  const total=config.serviceMinutes[input.service]+Object.entries(input.addons).reduce((sum,[id,quantity]) => sum+addonMinutesPerUnit(id,config)*quantity,0);
+  // Round once after summing quantities, so small extras are not inflated individually.
+  return Math.ceil(total/DURATION_INCREMENT)*DURATION_INCREMENT;
 }
 export function durationLabel(minutes: number) {
   const h=Math.floor(minutes/60), m=minutes%60;
