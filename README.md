@@ -12,7 +12,9 @@ Production-oriented Next.js application for **Send A Scout LLC d/b/a Carolina Ho
 - `app/book`, `components/booking-flow.tsx`: eight-step residential funnel.
 - `app/api/checkout`, `lib/payments.ts`: atomic slot reservations, checkout, idempotent fulfillment.
 - `app/control-room`, `components/control-room.tsx`, `app/api/admin`: authenticated administration.
-- `db/001_initial.sql`: schema, indexes, private-photo metadata groundwork.
+- `db/001_initial.sql` and `db/002_duration_scheduling.sql`: schema, private-photo metadata and scheduling blocks.
+- `lib/scheduling.ts`: shared Eastern business hours, duration estimates and interval availability.
+- `lib/schedule-store.ts`: the database occupancy query and transaction reservation guard.
 
 ## Environment
 
@@ -45,7 +47,7 @@ npm run build
 npm run dev
 ```
 
-Link only `persalabsllc/Carolinahomekeeping` to the `carolinahomekeeping` Vercel project. Use the Next.js preset and Node 24 (or the current supported Node LTS). Connect the dedicated Neon resource to this project. Run migrations before deploying with `DATABASE_URL`. The migration is repeatable, transaction-protected and initializes only pricing; it never seeds appointment capacity or customer data.
+Link only `persalabsllc/Carolinahomekeeping` to the `carolinahomekeeping` Vercel project. Use the Next.js preset and Node 24 (or the current supported Node LTS). Connect the dedicated Neon resource to this project. Run migrations before deploying with `DATABASE_URL`. The migration is repeatable, transaction-protected and initializes only pricing; it initializes scheduling rules but never creates customer data, bookings or fictional appointments.
 
 The Vercel build includes an optional migration step when `DATABASE_URL` is present. Preview deployments must use a **separate database and Stripe test keys**. Do not connect this database to unrelated projects. After environment changes redeploy so functions receive them.
 
@@ -56,7 +58,7 @@ Configure the custom domain in Vercel and apply the DNS records Vercel displays.
 Register `/api/stripe/webhook` for `checkout.session.completed`, `checkout.session.expired`, and `charge.refunded`. Use the endpoint’s own signing secret. Keep live and test credentials, databases, and endpoints separate.
 
 1. Server validates all home, contact, policy and service inputs and recalculates the price from current configuration. Client totals are never trusted; a changed price requires review.
-2. A database transaction locks the lead and selected appointment window, verifies capacity and creates a unique checkout hold. Holds are counted until Stripe has definitely expired them or payment has been fulfilled. Time alone never releases ambiguous paid capacity.
+2. A database transaction takes a shared scheduling advisory lock, locks the lead, recalculates duration and checks every overlapping booking/hold/block before reserving the entire interval. Different requested start times use the same lock; checking a single slot ID is not enough. Holds are counted until Stripe has definitely expired them or payment has been fulfilled. Time alone never releases ambiguous paid capacity.
 3. Stripe Checkout is created with an idempotency key tied to the hold. Cards only avoids delayed-payment booking ambiguity; supported Apple Pay / Google Pay are offered by Stripe/device eligibility.
 4. The verified webhook and authenticated return-page check call the same transaction-safe fulfillment function. One hold can create only one booking. Customer, home profile, recurring intent, booking, event and confirmation outbox are committed together.
 5. The outbox sends confirmation independently and retries. A browser closing after payment does not prevent booking creation. Duplicate webhook events cannot duplicate bookings.
@@ -72,14 +74,17 @@ Cancelling a booking in Control Room releases capacity but does not issue a refu
 
 The dashboard shows today/upcoming appointments, leads, recorded revenue net of refunds, cancellations and email-delivery attention. Calendar has day/week/month views. Bookings expose the selected scope, home/contact/access details, notes and status. Customers include home profiles, history and revenue. Leads retain incomplete paid-booking attempts, commercial inquiries and contact requests.
 
-Pricing UI edits all six service tiers, add-on price/limits/tax/enabled state, recurring percentages, bedroom/bathroom adjustments, ZIPs and minimum notice. Availability UI creates, blocks and adjusts actual arrival-window capacity. Overlapping windows are rejected; blocking a window prevents new checkout but does not cancel existing bookings.
+Pricing UI edits all six service tiers, add-on price/limits/tax/enabled state, recurring percentages, bedroom/bathroom adjustments, ZIPs and minimum notice. Availability UI edits concurrent team capacity, base service minutes and minutes per add-on unit, and blocks/releases time off. The day/week/month calendar displays bookings, checkout holds, blocked periods and free time from the same occupancy data used by checkout. It refreshes every 30 seconds while open. Blocking a period that overlaps an existing booking or checkout hold is rejected.
 
 The initial list views are capped at 1,000 records. Add paginated queries/reporting before volume outgrows this. Operational photo upload, cleaner accounts, automatic recurring billing and outbound marketing automation are intentionally not launched.
 
 ## Defaults requiring owner review
 
 - ZIPs: 28560 and 28562; these are broader than municipal boundaries. Confirm travel coverage before opening dates.
-- No appointment slots are seeded. The owner must publish staffing-backed arrival windows.
+- Owner-authorized working hours: Monday–Friday 8 AM–5 PM, Saturday 8 AM–2 PM, Sunday closed, in America/New_York. Start options are generated every 30 minutes for the next 90 calendar days, honoring the configured minimum notice. Full estimated duration must fit before closing. No manual opening of individual windows is needed.
+- Initial capacity is one cleaning team. Increase only when that many teams can work simultaneously. Staffing, travel and breaks remain an operational responsibility. No automatic travel buffer is added; time off can be blocked.
+- Standard: 120 minutes; Deep: 180 minutes; Move: 240 minutes (initial assumption requiring owner confirmation). Every paid add-on unit adds 30 minutes by default, configurable individually. Ordinary included bed making is already in base time; paid linen changes add time per bed. Estimates are flat per service initially, not size-adjusted.
+- Duration changes apply to new checkout holds. Paid bookings and reschedules retain the originally reserved interval length. Abandoned holds block their entire interval until Stripe confirms they are expired. Public checkout remains gated by BOOKING_ENABLED and provider readiness.
 - 24-hour minimum online notice; configurable.
 - Interior windows: proposed $8 per safely reachable standard window. Empty cabinet add-on: $30 per set of up to 10 emptied sections. Pet-hair base $20, plus $10 at 1,500 sqft and $20 at 3,000 sqft.
 - Initial tax configuration: 6.75% on wash/dry/fold and folding extras, zero on base cleaning and other extras. This is a provisional implementation assumption. Have a North Carolina tax professional confirm the classification of each in-home service, rate, registrations and combined charges. Taxability/rate is configurable and included in the visible total.
@@ -96,13 +101,13 @@ Leads are captured only after contact details are submitted, with a clear servic
 
 ## Quality checks
 
-`npm test` covers all 18 base service/size combinations at both boundaries, ZIP and condition review, add-on quantities, taxes, every discount, half-bathroom adjustments and invalid pricing inputs. `npm run build` runs TypeScript and production compilation.
+`npm test` covers all 18 base service/size combinations at both boundaries, ZIP and condition review, add-on quantities, taxes, every discount, half-bathroom adjustments and invalid pricing inputs. `tests/scheduling.test.ts` also covers business hours, DST, full-duration boundaries, quantity-based duration, interval capacity, concurrent reservation attempts in an isolated PGlite database, cancellation, rescheduling and block release. `npm run build` runs TypeScript and production compilation.
 
 Before enabling live bookings, verify in an isolated test environment:
 
 - Supported and unsupported ZIPs; each cleaning type and size tier; move-empty-home rule.
 - Add-ons, discount math, mobile layout and keyboard/form labels.
-- A real test appointment window, simultaneous attempts at last capacity, expired checkout.
+- Duration-aware start options, simultaneous overlapping attempts at last capacity, expired checkout, time-off blocks and closing-time boundaries.
 - Stripe test success (`4242 4242 4242 4242`) and decline (`4000 0000 0000 0002`), signature rejection, duplicate webhook delivery.
 - Paid booking in Control Room, customer record, lead conversion and delivered confirmation.
 - Abandoned checkout saved as a lead, commercial inquiry and scheduled commercial job.

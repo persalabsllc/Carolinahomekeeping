@@ -4,6 +4,8 @@ import {db} from '@/lib/db';
 import {bookingSchema} from '@/lib/validation';
 import {getConfig,canBook} from '@/lib/config';
 import {calculateQuote} from '@/lib/pricing';
+import {getScheduling,lockSchedule,reserveInterval} from '@/lib/schedule-store';
+import {estimateMinutes} from '@/lib/scheduling';
 import {checkOrigin,rateLimit,hash,apiError} from '@/lib/security';
 import {stripe,createStripeSession} from '@/lib/payments';
 export async function POST(req:Request){try{
@@ -16,7 +18,7 @@ export async function POST(req:Request){try{
  if(!lead)throw new Error('Please return to your contact details and continue again.');
  const [existing]=await sql`select * from checkout_holds where lead_id=${lead.id} and status in ('creating','open')`;
  if(existing){
-  if(isDeepStrictEqual(existing.payload,input)&&existing.quote.total===quote.total){
+  if(isDeepStrictEqual(existing.payload,input)&&existing.quote.total===quote.total&&existing.quote.durationMinutes===raw.expectedDuration&&existing.quote.durationMinutes===estimateMinutes(input,await getScheduling())){
    const session=existing.stripe_session_id?await stripe().checkout.sessions.retrieve(existing.stripe_session_id):await createStripeSession(existing);
    if(session.status==='open'&&session.url)return Response.json({url:session.url});
    if(session.payment_status==='paid')throw new Error('This booking has already been paid. Check your confirmation email.');
@@ -29,15 +31,15 @@ export async function POST(req:Request){try{
  }
  const hold=await sql.begin(async tx=>{
   // Serialize repeated checkout attempts, then reserve the appointment capacity atomically.
+  await lockSchedule(tx);
   const [lockedLead]=await tx`select id,status from leads where id=${lead.id} for update`;
   if(!lockedLead||lockedLead.status==='converted')throw new Error('This booking has already been paid. Check your confirmation email.');
   const [pending]=await tx`select id from checkout_holds where lead_id=${lead.id} and status in ('creating','open')`;
   if(pending)throw new Error('Payment is already being prepared. Please wait a moment and try again.');
-  const [slot]=await tx`select * from appointment_slots where id=${input.slotId} for update`;
-  if(!slot||slot.blocked||new Date(slot.starts_at).getTime()<Date.now()+config.leadHours*3600000)throw new Error('That appointment is no longer available. Please choose another time.');
-  const [usage]=await tx`select (select count(*) from bookings where slot_id=${slot.id} and status not in ('cancelled','refunded'))+(select count(*) from checkout_holds where slot_id=${slot.id} and status in ('creating','open')) as used`;
-  if(Number(usage.used)>=slot.capacity)throw new Error('That appointment was just reserved. Please choose another time.');
-  const [h]=await tx`insert into checkout_holds(lead_id,slot_id,token_hash,status,expires_at,payload,quote) values(${lead.id},${slot.id},${hash(leadToken)},'creating',now()+interval '35 minutes',${tx.json(input)},${tx.json(quote)}) returning *`;
+  const scheduling=await getScheduling(tx);const durationMinutes=estimateMinutes(input,scheduling);
+  if(raw.expectedDuration!==durationMinutes)throw new Error('The reserved cleaning time has changed. Please reload and select your appointment again.');
+  const slot=await reserveInterval(tx,input.scheduledStart,durationMinutes,scheduling,config.leadHours);
+  const [h]=await tx`insert into checkout_holds(lead_id,slot_id,token_hash,status,expires_at,payload,quote) values(${lead.id},${slot.id},${hash(leadToken)},'creating',now()+interval '35 minutes',${tx.json(input)},${tx.json({...quote,durationMinutes})}) returning *`;
   await tx`update leads set stage='checkout',quoted_amount=${quote.total},updated_at=now() where id=${lead.id}`;
   return h;
  });

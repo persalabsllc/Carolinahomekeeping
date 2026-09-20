@@ -10,7 +10,7 @@
 ## Verification so far
 
 - Production build and TypeScript: passed.
-- 27 automated checks: passed. Includes all pricing tiers, add-ons, recurring discounts and a real in-process Postgres migration/constraint test.
+- 34 automated checks: passed. Includes all pricing tiers, add-ons, recurring discounts and a real in-process Postgres migration/constraint test.
 - Production Vercel deployment: READY.
 - Desktop homepage and booking steps: inspected in browser.
 - Phone-width homepage, home details, service choices, add-ons and frequency: inspected at a 375px content width in an isolated preview. No horizontal overflow observed. Local-font inheritance corrected after visual inspection.
@@ -23,10 +23,19 @@
 
 - Stripe sign-in/appropriate account credentials and webhook setup; then success/decline and confirmation end-to-end tests with test credentials.
 - Resend access, verified sender and monitored reply-to email; then admin sign-in and delivered-email verification.
-- Owner-confirmed real appointment windows and staffing capacity. No fictional capacity will be published.
+- Owner supplied working hours and initial duration rules. The scheduler now opens those hours automatically for one team once payment setup is complete; confirm staffing capacity and the provisional four-hour Move estimate before enabling live checkout.
 - GoDaddy domain DNS, currently reported by Vercel as A @ → 216.150.1.1. Update APP_URL to https://carolinahomekeeping.com after DNS and HTTPS are valid.
 - Review initial tax treatment, service area, cancellation and legal policies.
 
 Stripe success/decline, a payment-created booking, delivered confirmation, signed-in administration and real appointment selection have **not** been verified end to end. They remain release gates, not claimed successes. The no-availability lead check is not a substitute for testing abandonment after contact entry in the paid booking path.
 
 Online payments remain explicitly disabled pending these connections. No real charge has been taken or claimed. The Vercel URL is the usable current site.
+
+## Duration scheduling update
+
+- Mon–Fri 8 AM–5 PM; Sat 8 AM–2 PM; Sundays closed, all Eastern.
+- Standard 2 hours; Deep 3 hours; Move 4 hours initially. Paid add-on units default to 30 minutes each. Configurable in Control Room.
+- Full interval overlap checks replace per-arrival-window capacity checks, using one shared transaction lock for checkout, fulfillment, rescheduling, commercial scheduling and configuration changes.
+- Control Room calendar displays open time, booked work, checkout holds and time-off blocks. Customers see available starts with estimated finish times.
+- Existing minimum notice remains 24 hours; public payment readiness remains unchanged.
+- Scheduling unit and isolated database tests passed. Production Stripe and email end-to-end verification remains pending account setup.
