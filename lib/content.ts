@@ -7,4 +7,6 @@ export const areas=[
   {slug:'trent-woods',name:'Trent Woods',description:'Regular homekeeping for the everyday rhythm of life in Trent Woods. Add fresh linens or laundry help, and leave more of your weekend for yourself.'},
   {slug:'james-city',name:'James City',description:'An easier way to arrange home cleaning south of the Neuse. Whether it’s routine upkeep, a deeper reset or an empty-home move, start with your instant price.'},
   {slug:'river-bend',name:'River Bend',description:'Come home to a little less on your list. Explore standard, deep and move cleaning for your River Bend home, with online pricing and real appointment availability.'},
+  {slug:'taberna',name:'Taberna',description:'More time to enjoy home in Taberna. Choose a routine clean, a deeper refresh or help with a move, then add dishes, laundry or fresh linens to take a little more off your plate.'},
+  {slug:'fairfield-harbour',name:'Fairfield Harbour',description:'Give yourself a little breathing room in Fairfield Harbour. See your cleaning price, choose an available time and let us handle the everyday chores that can wait for someone else.'},
 ];
