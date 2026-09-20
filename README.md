@@ -156,4 +156,14 @@ The durable outbox uses transactional event insertion, unique event keys, per-me
 
 The account's free Resend sending limits are shared with other domains. Monitor actual usage before increasing booking volume; owner alerts plus customer confirmation, two reminders and follow-up use at least five messages per cleaning. No paid plan is enabled by this implementation.
 
-Verification uses isolated PGlite databases and provider fakes (no production customer records or emails), plus TypeScript/build and browser UI checks. Real Stripe acceptance/decline, actual provider delivery and recurring invoices must also be verified with the account connected before paid launch.
+Verification uses isolated PGlite databases and provider fakes (no production customer records or emails), plus TypeScript/build and browser UI checks. Real Stripe acceptance/decline and recurring invoices must still be verified with the account connected before paid launch.
+
+
+### Email release verification — September 20, 2026
+
+- 48 automated tests passed; TypeScript and optimized production build passed.
+- Desktop and 390px mobile preview checks covered restoring a recovery quote, fresh appointment selection, first-payment versus recurring totals, feedback submission (including a low rating with the same public-review option), and email settings. QA fixtures live only on the isolated `qa/email-automation` preview branch. `/qa-emails` returns 404 in production.
+- Production private-link endpoints rejected invalid tokens. Admin mutation and cron routes rejected unauthenticated requests. The production cron ran successfully every minute.
+- `EMAIL_FROM` is `Carolina Homekeeping Co. <bookings@carolinahomekeeping.com>`; `APP_URL` is `https://www.carolinahomekeeping.com`. Resend domain authentication is verified.
+- A single owner-only delivery check traveled through the production outbox and cron to `kkratoville@gmail.com`. Resend confirmed **delivered** at 02:35 UTC. No customer, booking or payment test records were created; the test message remains visible as `owner_test` in email activity.
+- Launch dependencies remain Stripe/payment activation, a real business mailing address for offers, and a public review URL for review invitations. The Namecheap customer-service inbox is a separate setup; templates direct customers to the Contact page meanwhile.
