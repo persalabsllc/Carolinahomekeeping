@@ -65,7 +65,7 @@ Register `/api/stripe/webhook` for `checkout.session.completed`, `checkout.sessi
 3. Stripe Checkout is created with an idempotency key tied to the hold. Cards only avoids delayed-payment booking ambiguity; supported Apple Pay / Google Pay are offered by Stripe/device eligibility.
 4. The verified webhook and authenticated return-page check call the same transaction-safe fulfillment function. One hold can create only one booking. Customer, home profile, subscription, bookings, event and confirmation outbox are committed together.
 5. The outbox sends confirmation independently and retries. A browser closing after payment does not prevent booking creation. Duplicate webhook events cannot duplicate bookings.
-6. Every five minutes `/api/cron` reconciles checkout and subscription state, extends recurring appointments, and retries email. It is authenticated by `CRON_SECRET`. Network-ambiguous Stripe creates are recovered before capacity is released.
+6. Every minute `/api/cron` reconciles checkout and subscription state, extends recurring appointments, and queues due reminders and follow-ups, and retries email. It is authenticated by `CRON_SECRET`. Network-ambiguous Stripe creates are recovered before capacity is released.
 
 ### Recurring subscriptions
 
@@ -136,3 +136,24 @@ Before enabling live bookings, verify in an isolated test environment:
 Use an isolated database for payment and booking tests. The initial deployment verification created two explicitly labeled private QA inquiry records, then closed them with do-not-contact notes; it created no bookings or customer records. Current execution results and launch dependencies are tracked in `docs/launch-status.md`.
 
 References: [Stripe fulfillment](https://docs.stripe.com/checkout/fulfillment), [Checkout Sessions](https://docs.stripe.com/api/checkout/sessions/create), [Subscription trials and immediate invoice items](https://docs.stripe.com/billing/subscriptions/trials), [Subscription webhooks](https://docs.stripe.com/billing/subscriptions/webhooks), [NCDOR Sales and Use Tax](https://www.ncdor.gov/taxes-forms/sales-and-use-tax).
+
+
+## Automated customer communications
+
+Migration `005_communications.sql` adds delivery scheduling, email preferences, one-use recovery offers and private booking feedback. Control Room → **Emails** lets the owner configure the alert recipient, enable/disable each workflow, change follow-up timing, set discount/expiry, supply a real business mailing address and add an HTTPS public review link. Defaults:
+
+- Owner alert to `kkratoville@gmail.com` when a paid residential booking or agreed commercial job is confirmed. Each paid recurring visit also alerts the owner.
+- Customer confirmation after verified payment (commercial scheduling confirms the agreed price without claiming payment).
+- Reminders at 12 hours and 1 hour before the current appointment. Minute cron means timing is approximate. Bookings made after a reminder's target skip that reminder; delayed reminders expire after 30 minutes. Canceled, unpaid and rescheduled messages are checked immediately before dispatch.
+- Feedback request two hours after **marking the booking completed**, never merely after its scheduled finish. Private feedback is available in Emails. Every rating gets the same public review option when a review URL is configured; no review gating. Unsubscribing stops feedback and offers, not necessary transactional messages.
+- One abandoned-first-booking offer after two hours of inactivity, only with explicit email consent, no existing customer bookings and no unresolved active/paid checkout. An offer expires after seven days, provides 10% off the first visit including extras after recurring savings, and never changes future subscription charges. The offer is signed, restricted to the original email/lead, redeemed atomically with payment, and protected by a unique active-hold index. Recovery links restore quote/contact/address, exclude entry instructions and require fresh availability and policy/payment consent. Current prices are recalculated server-side.
+
+Recovery email dispatch requires **BOOKING_ENABLED**, all payment connections, and a real `postalAddress` in email settings. Do not invent an address or review URL. A legitimate mailing address is required for promotional mail; business PO boxes are acceptable. Public-review invitations are omitted from emails until both postal address and review URL are configured. An ordinary private service-feedback request works meanwhile. These policy additions and discount tax treatment should receive professional legal/accounting review before paid launch.
+
+`RESEND_API_KEY`, `EMAIL_FROM` (verified sender), `APP_URL` (canonical HTTPS origin), `SESSION_SECRET` and `CRON_SECRET` must be configured server-side. `SUPPORT_EMAIL` optionally sets Reply-To and should only point to a monitored mailbox. Sender authentication does not create an inbox. With no monitored mailbox, templates direct customers to Contact. The Emails tab has an authenticated **Send test email** action targeting the saved owner address. No test bookings are required.
+
+The durable outbox uses transactional event insertion, unique event keys, per-message claims and Resend idempotency keys. It retries transient failures with backoff, never reuses an ambiguous delivery beyond Resend's 24-hour idempotency window (23-hour application cutoff), and exposes failures for review. `sent` means Resend accepted the message; final inbox delivery/bounces are visible in Resend. There is no automatic resend of failed jobs after that cutoff. Check provider logs first. All HTML is escaped and plain-text fallbacks are included. Unsubscribe GET is read-only; signed POST supports one-click unsubscribes. Recovery/feedback tokens are scoped by purpose; pages are excluded from indexing. Emails do not contain access codes.
+
+The account's free Resend sending limits are shared with other domains. Monitor actual usage before increasing booking volume; owner alerts plus customer confirmation, two reminders and follow-up use at least five messages per cleaning. No paid plan is enabled by this implementation.
+
+Verification uses isolated PGlite databases and provider fakes (no production customer records or emails), plus TypeScript/build and browser UI checks. Real Stripe acceptance/decline, actual provider delivery and recurring invoices must also be verified with the account connected before paid launch.

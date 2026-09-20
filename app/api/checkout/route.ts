@@ -3,19 +3,22 @@ import {cookies} from 'next/headers';
 import {db} from '@/lib/db';
 import {bookingSchema} from '@/lib/validation';
 import {getConfig,canBook} from '@/lib/config';
-import {calculateQuote} from '@/lib/pricing';
+import {recoveryOffer} from '@/lib/recovery';
+import {calculateQuote,applyRecoveryQuote} from '@/lib/pricing';
 import {getScheduling,lockSchedule,reserveInterval} from '@/lib/schedule-store';
 import {estimateMinutes} from '@/lib/scheduling';
 import {checkOrigin,rateLimit,hash,apiError} from '@/lib/security';
 import {stripe,createStripeSession} from '@/lib/payments';
 export async function POST(req:Request){try{
  checkOrigin(req);if(!canBook())throw new Error('Online booking is not open yet. Please send us your details for scheduling.');
- await rateLimit(req,'checkout',12);const raw=await req.json();const input=bookingSchema.parse(raw);const config=await getConfig();const quote=calculateQuote(input,config);
+ await rateLimit(req,'checkout',12);const raw=await req.json();const input=bookingSchema.parse(raw);const config=await getConfig();let quote=calculateQuote(input,config);
  if(quote.review)throw new Error('Please request a personal review before booking this home.');
- if(quote.total!==raw.expectedTotal)return Response.json({error:'Your price has changed. Please reload to review the current price before paying.'},{status:409});
  const leadToken=(await cookies()).get('ch_lead')?.value;if(!leadToken)throw new Error('Please return to your contact details and continue again.');
  const sql=db();const [lead]=await sql`select * from leads where token_hash=${hash(leadToken)} and status!='converted'`;
  if(!lead)throw new Error('Please return to your contact details and continue again.');
+ const offer=input.recoveryToken?await recoveryOffer(sql,input.recoveryToken,input.contact.email,lead.id):null;
+ if(offer)quote=applyRecoveryQuote(quote,offer.percent);
+ if(quote.total!==raw.expectedTotal)return Response.json({error:'Your price has changed. Please reload to review the current price before paying.'},{status:409});
  const [existing]=await sql`select * from checkout_holds where lead_id=${lead.id} and status in ('creating','open')`;
  if(existing){
   if(isDeepStrictEqual(existing.payload,input)&&existing.quote.total===quote.total&&existing.quote.durationMinutes===raw.expectedDuration&&existing.quote.durationMinutes===estimateMinutes(input,await getScheduling())){
@@ -36,10 +39,11 @@ export async function POST(req:Request){try{
   if(!lockedLead||lockedLead.status==='converted')throw new Error('This booking has already been paid. Check your confirmation email.');
   const [pending]=await tx`select id from checkout_holds where lead_id=${lead.id} and status in ('creating','open')`;
   if(pending)throw new Error('Payment is already being prepared. Please wait a moment and try again.');
+  if(input.recoveryToken)await recoveryOffer(tx,input.recoveryToken,input.contact.email,lead.id);
   const scheduling=await getScheduling(tx);const durationMinutes=estimateMinutes(input,scheduling);
   if(raw.expectedDuration!==durationMinutes)throw new Error('The reserved cleaning time has changed. Please reload and select your appointment again.');
   const slot=await reserveInterval(tx,input.scheduledStart,durationMinutes,scheduling,config.leadHours,undefined,input.frequency);
-  const [h]=await tx`insert into checkout_holds(lead_id,slot_id,token_hash,status,expires_at,payload,quote) values(${lead.id},${slot.id},${hash(leadToken)},'creating',now()+interval '35 minutes',${tx.json(input)},${tx.json({...quote,durationMinutes})}) returning *`;
+  const [h]=await tx`insert into checkout_holds(lead_id,slot_id,token_hash,status,expires_at,payload,quote,recovery_offer_id) values(${lead.id},${slot.id},${hash(leadToken)},'creating',now()+interval '35 minutes',${tx.json(input)},${tx.json({...quote,durationMinutes})},${offer?.id||null}) returning *`;
   await tx`update leads set stage='checkout',quoted_amount=${quote.total},updated_at=now() where id=${lead.id}`;
   return h;
  });

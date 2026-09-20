@@ -41,7 +41,7 @@ export async function recordInvoice(sql:ScheduleSql,plan:Plan,invoice:RenewalInv
  const booking=await ensureOccurrence(sql,plan,index);
  if(booking.stripe_invoice_id&&booking.stripe_invoice_id!==invoice.id)throw new Error('A different invoice is already linked to this visit.');
  const paid=invoice.status==='paid';
- const mismatch=invoice.currency!=='usd'||invoice.total!==plan.amount;
+ const mismatch=invoice.currency!=='usd'||invoice.total!==(invoice.initial?booking.amount:plan.amount);
  const [slot]=await sql.unsafe('select starts_at from appointment_slots where id=$1',[booking.slot_id]);
  const late=paid&&!['paid','refunded','partially_refunded'].includes(booking.payment_status)&&new Date(slot.starts_at).getTime()<=Date.now();
  if(paid){

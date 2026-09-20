@@ -52,7 +52,7 @@ export const quoteSchema = z.object({
   service:z.enum(services), frequency:z.enum(frequencies), addons:z.record(z.string(),z.number().int().min(0).max(50)),
 });
 export type QuoteInput = z.infer<typeof quoteSchema>;
-export type Quote = { review:boolean; reason?:string; base:number; roomAdjustment:number; addons:{id:string;name:string;quantity:number;unitPrice:number;amount:number;taxable:boolean}[]; discount:number;discountPercent:number;subtotal:number;tax:number;total:number };
+export type Quote = { recoveryDiscount?:number; recoveryPercent?:number; regularTotal?:number; regularSubtotal?:number; regularTax?:number; review:boolean; reason?:string; base:number; roomAdjustment:number; addons:{id:string;name:string;quantity:number;unitPrice:number;amount:number;taxable:boolean}[]; discount:number;discountPercent:number;subtotal:number;tax:number;total:number };
 export function calculateQuote(raw:unknown,config:PricingConfig):Quote {
   const input=quoteSchema.parse(raw);
   const zero={base:0,roomAdjustment:0,addons:[],discount:0,discountPercent:0,subtotal:0,tax:0,total:0};
@@ -80,3 +80,16 @@ export function calculateQuote(raw:unknown,config:PricingConfig):Quote {
   return {review:false,base,roomAdjustment,addons,discount,discountPercent,subtotal,tax,total:subtotal+tax};
 }
 export const money=(cents:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:cents%100?2:0,maximumFractionDigits:2}).format(cents/100);
+
+// A recovery offer discounts one visit, after recurring savings. Stored regular totals
+// keep all future subscription invoices independent from the first-visit promotion.
+export function applyRecoveryQuote(quote:Quote,percent:number):Quote {
+ if(quote.review)return quote;
+ if(!Number.isInteger(percent)||percent<1||percent>50)throw new Error('Invalid recovery discount.');
+ const q=regularQuote(quote),recoveryDiscount=Math.round(q.subtotal*percent/100),tax=Math.round(q.tax*(100-percent)/100);
+ return {...q,recoveryDiscount,recoveryPercent:percent,regularTotal:q.total,regularSubtotal:q.subtotal,regularTax:q.tax,subtotal:q.subtotal-recoveryDiscount,tax,total:q.subtotal-recoveryDiscount+tax};
+}
+export function regularQuote(quote:Quote):Quote {
+ const {recoveryDiscount,recoveryPercent,regularTotal,regularSubtotal,regularTax,...q}=quote;
+ return {...q,total:regularTotal??q.total,subtotal:regularSubtotal??q.subtotal,tax:regularTax??q.tax};
+}

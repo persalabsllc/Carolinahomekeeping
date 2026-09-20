@@ -13,7 +13,7 @@ export async function limitKey(key:string,max:number){
 }
 export function apiError(error:unknown,status=400){
  const safe=error instanceof Error?error.message:'Something went wrong. Please try again.';
- const publicMessage=/^Please |^Too many|^That appointment|^Your price|^Online booking|^Payment |^Move cleaning|^Empty cabinets|^No appointment|^Sign-in|^Invalid code|^This booking|^Cannot |^No matching|^That recurring|^That cleaning|^That time|^The reserved|^Capacity cannot|^Choose a valid|^This period|^This blocked|^No unscheduled|^This cleaning/.test(safe)?safe:'We couldn’t complete that request. Please check your details and try again.';
+ const publicMessage=/^Please |^Too many|^That appointment|^Your price|^Online booking|^Payment |^Move cleaning|^Empty cabinets|^No appointment|^Sign-in|^Invalid code|^This booking|^Cannot |^No matching|^That recurring|^That cleaning|^That time|^The reserved|^Capacity cannot|^Choose a valid|^This period|^This blocked|^No unscheduled|^This cleaning|^This offer|^This feedback/.test(safe)?safe:'We couldn’t complete that request. Please check your details and try again.';
  console.error('Request failed:',error instanceof Error?error.name:'UnknownError');
  return Response.json({error:publicMessage},{status});
 }

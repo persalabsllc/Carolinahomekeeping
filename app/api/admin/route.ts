@@ -1,3 +1,7 @@
+import {after} from 'next/server';
+import {processCommunications,getCommunications,enqueueEmail} from '@/lib/communications';
+import {communicationSchema} from '@/lib/communication-config';
+import {emailTemplate} from '@/lib/email-templates';
 import {capacityFits} from '@/lib/recurrence';
 import {cancelSubscription,portalSession,reconcileSubscriptions} from '@/lib/subscriptions';
 import {z} from 'zod';
@@ -16,6 +20,8 @@ const eastern=(s:string)=>fromZonedTime(s+':00','America/New_York').toISOString(
 export async function POST(req:Request){try{
  checkOrigin(req);const actor=await requireAdmin();const input=await req.json();const sql=db();
  switch(input.action){
+ case 'communications':{const current=await getCommunications(sql);const config=communicationSchema.parse({...input.config,enabledAt:current.enabledAt});await sql`update settings set value=${sql.json(config)},updated_at=now() where key='communications'`;break;}
+ case 'email_test':{const config=await getCommunications(sql);await enqueueEmail(sql,{key:'owner-test:'+randomBytes(16).toString('hex'),to:config.ownerEmail,subject:'Your Carolina Homekeeping emails are connected',html:emailTemplate('Your email connection is working.','<p>This test was requested from your Control Room. Booking alerts will arrive at this address when a new booking is confirmed.</p>'),kind:'owner_test'});break;}
  case 'pricing':{const config=configSchema.parse(input.config);await sql`insert into settings(key,value) values('pricing',${sql.json(config)}) on conflict(key) do update set value=excluded.value,updated_at=now()`;break;}
  case 'scheduling':{
   const config=schedulingSchema.parse(input.config);
@@ -80,9 +86,10 @@ export async function POST(req:Request){try{
  }
  case 'subscription_cancel':{const id=z.uuid().parse(input.id);await cancelSubscription(id);break;}
  case 'subscription_portal':{const id=z.uuid().parse(input.id);const portal=await portalSession(id);await sql`insert into audit_log(actor,action,record_id) values(${actor},'subscription_portal',${id})`;return Response.json({url:portal.url});}
- case 'retry_delivery':{if(process.env.STRIPE_SECRET_KEY){await reconcileHolds();await reconcileSubscriptions();}await drainOutbox();break;}
+ case 'retry_delivery':{if(process.env.STRIPE_SECRET_KEY){await reconcileHolds();await reconcileSubscriptions();}await processCommunications();await drainOutbox();break;}
  default:throw new Error('Unknown action.');
  }
  await sql`insert into audit_log(actor,action,record_id) values(${actor},${String(input.action)},${input.id||input.leadId||null})`;
+ if(input.action!=='retry_delivery')after(async()=>{await processCommunications();await drainOutbox();});
  return Response.json({ok:true});
  }catch(e){return apiError(e,e instanceof Error&&e.message==='Sign-in required.'?401:400);}}
