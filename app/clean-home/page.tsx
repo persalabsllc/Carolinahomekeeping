@@ -30,7 +30,7 @@ export default async function CleanHome(){
     <div className="ad-grid">
       <section className="ad-story" aria-labelledby="ad-heading">
         <p className="eyebrow">New Bern & neighboring communities</p>
-        <h1 id="ad-heading">You have enough<br/>on your plate.<br/><em>Leave the cleaning<br/>to us.</em></h1>
+        <h1 id="ad-heading">You have enough <br/>on your plate.<br/><em>Leave the cleaning <br/>to us.</em></h1>
         <p className="ad-lead">The floors. The bathrooms. That never-ending list.<br className="ad-desktop-break"/> Let us handle the house. You take a little time back.</p>
         <a className="button light ad-main-cta" href="#your-clean">Get my instant price <ArrowRight size={19}/></a>
         <p className="ad-starting">Standard cleaning from <strong>{money(entry.standard)}</strong><span>One-time price · {entry.label} · extras optional</span></p>
