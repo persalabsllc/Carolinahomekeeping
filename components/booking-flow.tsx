@@ -30,7 +30,7 @@ export function BookingFlow({config,scheduling,initial,leadReady}:{config:Pricin
   let active=true;const controller=new AbortController();setLoadingSlots(true);setSlots([]);
   fetch('/api/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),signal:controller.signal}).then(async r=>{
    const d=await r.json();if(!r.ok)throw new Error(d.error);
-   if(active){setSlots(d.slots);setAvailabilityOpen(d.open);if(d.durationMinutes&&d.durationMinutes!==durationMinutes){setSlots([]);setSlotId('');setError('Our time estimates have changed. Please reload to review your cleaning before scheduling.');}}
+   if(active){setSlots(d.slots);setSlotId(current=>d.slots.some((s:Slot)=>s.id===current)?current:'');setAvailabilityOpen(d.open);if(d.durationMinutes&&d.durationMinutes!==durationMinutes){setSlots([]);setSlotId('');setError('Our time estimates have changed. Please reload to review your cleaning before scheduling.');}}
   }).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setLoadingSlots(false)});
   return()=>{active=false;controller.abort()};
  },[step,input,durationMinutes]);
