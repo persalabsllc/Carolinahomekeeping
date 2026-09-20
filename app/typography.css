@@ -1,0 +1,7 @@
+/* Preserve the brand faces and layout; use genuine font styles and let the
+   browser/OS choose smoothing appropriate to the visitor's display. */
+body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  font-synthesis: none;
+}
