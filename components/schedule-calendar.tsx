@@ -28,7 +28,7 @@ export function ScheduleCalendar({occupancy,config,onBooking,snapshot}:{snapshot
         const items=[...occupied.map(o=>({...o,remaining:0})),...free.map((o,i)=>({...o,id:'open-'+i,kind:'open' as const,label:'',booking_id:undefined}))].sort((a,b)=>a.starts_at.localeCompare(b.starts_at));
         return <div className={'schedule-day '+(day.slice(0,7)!==anchor.slice(0,7)?'muted-day':'')} key={day} aria-label={day}>
           <button className={'calendar-date '+(day===today?'today':'')} onClick={()=>{setAnchor(day);setView('day')}}>{formatInTimeZone(new Date(day+'T12:00:00Z'),'UTC',view==='day'?'EEEE, MMMM d':'d')}</button>
-          {!hours&&<p className="calendar-closed">Closed Sunday</p>}
+          {!hours&&<p className="calendar-closed">Unavailable</p>}
           {items.map(o=><button key={o.kind+o.id} type="button" className={'calendar-event '+o.kind} disabled={!o.booking_id} onClick={()=>o.booking_id&&onBooking(o.booking_id)}><strong>{localTime(o.starts_at)}–{localTime(o.ends_at)}</strong><span>{o.kind==='open'?`${o.remaining} ${o.remaining===1?'team':'teams'} available`:o.kind==='hold'?'Checkout reservation':o.label||'Blocked'}</span></button>)}
           {hours&&!items.length&&<p className="calendar-closed">No free time</p>}
         </div>;

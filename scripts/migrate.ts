@@ -3,6 +3,7 @@ import {db} from '../lib/db';
 import {defaultConfig} from '../lib/pricing';
 import {defaultScheduling} from '../lib/scheduling';
 import {invitationSchema} from '../lib/passwords';
+import {applyOwnerLaunchSchedule} from '../lib/owner-launch-schedule';
 const sql=db();
 async function migrate(){
 await sql.begin(async tx=>{
@@ -22,6 +23,7 @@ await sql.begin(async tx=>{
  }
  await tx`insert into settings(key,value) values('scheduling',${tx.json(defaultScheduling)}) on conflict(key) do nothing`;
  await tx`insert into settings(key,value) values('pricing',${tx.json(defaultConfig)}) on conflict(key) do nothing`;
+ if(await applyOwnerLaunchSchedule(tx))console.log('Owner launch schedule: single-cleaner capacity applied; existing reservations preserved.');
 });
 console.log('Schema migrated; pricing and scheduling initialized; no customer records seeded.');
 await sql.end();

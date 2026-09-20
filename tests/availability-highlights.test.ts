@@ -32,9 +32,9 @@ test('bookings, holds and blocks remove openings; released capacity restores the
   snapshot.fixed.push(occupied('2026-09-24T08:00:00',240));
   assert.equal(highlights(snapshot).slots[0].label,'Thursday afternoon');
   snapshot.fixed.push(occupied('2026-09-24T12:00:00',360,'hold'));
-  assert.equal(highlights(snapshot).slots[0].label,'Friday morning');
-  snapshot.fixed.push(occupied('2026-09-25T08:00:00',600,'block'));
-  assert.equal(highlights(snapshot).slots[0].label,'Saturday morning');
+  assert.equal(highlights(snapshot).slots[0].label,'Sunday morning');
+  snapshot.fixed.push(occupied('2026-09-27T08:00:00',600,'block'));
+  assert.equal(highlights(snapshot).slots[0].label,'Thursday morning');
   snapshot.fixed=[];
   assert.equal(highlights(snapshot).slots[0].label,'Thursday morning');
 });
@@ -43,7 +43,7 @@ test('recurring appointments and team capacity use the booking calendar rules',(
   const snapshot=empty();
   snapshot.series.push({id:'private-plan',planId:'plan',anchorStart:eastern('2026-09-17T08:00:00'),durationMinutes:600,weeks:1,kind:'booking',label:'Secret client'});
   const value=highlights(snapshot);
-  assert.equal(value.slots[0].label,'Friday morning');
+  assert.equal(value.slots[0].label,'Sunday morning');
   assert.ok(!JSON.stringify(value).includes('Secret client'));
   assert.ok(!JSON.stringify(value).includes('private-plan'));
   const twoTeams=buildAvailabilityHighlights(snapshot,{...defaultScheduling,teamCapacity:2},24,true,now);
@@ -59,11 +59,11 @@ test('longer configured cleans never advertise overlapping highlighted visits',(
   assert.ok(value.slots[0].endsAt<=value.slots[1].startsAt);
 });
 
-test('Sunday closure, DST and the limited lookahead are respected',()=>{
+test('Sunday availability, DST and the limited lookahead are respected',()=>{
   const beforeDST=new Date(eastern('2026-10-30T08:00:00'));
   const value=buildAvailabilityHighlights(empty(),defaultScheduling,48,true,beforeDST);
-  assert.equal(value.slots[0].label,'Monday morning');
-  assert.equal(value.slots[0].startsAt,'2026-11-02T13:00:00.000Z');
+  assert.equal(value.slots[0].label,'Sunday morning');
+  assert.equal(value.slots[0].startsAt,'2026-11-01T13:00:00.000Z');
   const snapshot=empty();
   snapshot.fixed.push({id:'all-blocked',kind:'block',starts_at:dayBounds(localDay(now)).starts_at,ends_at:dayBounds(nextDay(localDay(now),HIGHLIGHT_DAYS)).starts_at});
   assert.deepEqual(highlights(snapshot).slots,[]);
@@ -84,7 +84,7 @@ test('new calendar blocks are reflected on the next read and released blocks reo
     assert.equal((await read()).slots[0].label,'Thursday morning');
     await database.query("insert into schedule_blocks(starts_at,ends_at,label) values($1,$2,'Internal time-off notes')",[eastern('2026-09-24T08:00:00'),eastern('2026-09-24T18:00:00')]);
     const blocked=await read();
-    assert.equal(blocked.slots[0].label,'Friday morning');
+    assert.equal(blocked.slots[0].label,'Sunday morning');
     assert.ok(!JSON.stringify(blocked).includes('Internal time-off notes'));
     await database.query('update schedule_blocks set active=false');
     assert.equal((await read()).slots[0].label,'Thursday morning');

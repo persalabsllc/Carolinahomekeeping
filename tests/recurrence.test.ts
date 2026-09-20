@@ -73,7 +73,7 @@ test('recurring database bookings, payment recovery, invoice idempotency and can
  try{
   for(const f of ['db/001_initial.sql','db/002_duration_scheduling.sql','db/004_subscriptions.sql','db/004_subscriptions.sql'])await database.exec(readFileSync(f,'utf8'));
   const sql=adapter(database);
-  let day=nextDay(localDay(new Date()),3);while(new Date(day+'T12:00:00Z').getUTCDay()!==1)day=nextDay(day);
+  let day=nextDay(localDay(new Date()),3);while(new Date(day+'T12:00:00Z').getUTCDay()!==4)day=nextDay(day);
   const anchor=eastern(day+'T09:00:00');
   const customer=await database.query<{id:string}>("insert into customers(name,email,phone) values('Isolated QA','qa@example.invalid','2525550100') returning id");
   const home=await database.query<{id:string}>("insert into homes(customer_id,address,city,zip) values($1,'TEST ONLY','New Bern','28562') returning id",[customer.rows[0].id]);
@@ -123,7 +123,7 @@ test('a recurring checkout hold reserves future visits and prevents competing ch
  const database=new PGlite();const adapter=(q:{query:(s:string,p?:any[])=>Promise<any>})=>({unsafe:async(s:string,p:any[]=[])=> (await q.query(s,p)).rows}) as unknown as ScheduleSql;
  try{
   for(const f of ['db/001_initial.sql','db/002_duration_scheduling.sql','db/004_subscriptions.sql'])await database.exec(readFileSync(f,'utf8'));
-  let day=nextDay(localDay(new Date()),3);while(new Date(day+'T12:00:00Z').getUTCDay()!==1)day=nextDay(day);
+  let day=nextDay(localDay(new Date()),3);while(new Date(day+'T12:00:00Z').getUTCDay()!==4)day=nextDay(day);
   const anchor=eastern(day+'T09:00:00');
   const leads=await database.query<{id:string}>("insert into leads(token_hash,type,email,stage) values('a','residential','a@example.invalid','payment'),('b','residential','b@example.invalid','payment') returning id");
   const attempts=await Promise.allSettled([0,1].map(i=>database.transaction(async tx=>{

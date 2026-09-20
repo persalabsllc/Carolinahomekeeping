@@ -7,8 +7,7 @@ export const businessContact = {
   phoneE164: '+12525154389',
   phoneHref: 'tel:+12525154389',
   hours: [
-    {days:'Monday–Friday',times:'8 AM–5 PM'},
-    {days:'Saturday',times:'8 AM–2 PM'},
-    {days:'Sunday',times:'Closed'},
+    {days:'Thursday & Sunday',times:'8 AM–5 PM'},
+    {days:'Other days',times:'Unavailable'},
   ],
 } as const;

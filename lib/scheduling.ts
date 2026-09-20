@@ -40,8 +40,10 @@ export function dayBounds(day: string): Interval {
 }
 export function workingHours(day: string): Interval|null {
   const weekday = new Date(day+'T12:00:00Z').getUTCDay();
-  if(weekday===0) return null;
-  return {starts_at: fromZonedTime(day+'T08:00:00', TIME_ZONE).toISOString(), ends_at: fromZonedTime(day+(weekday===6?'T14:00:00':'T17:00:00'), TIME_ZONE).toISOString()};
+  // Owner-operated launch: only Thursday and Sunday accept new appointments.
+  // Closed days are unavailable, not fabricated customer bookings.
+  if(weekday!==4&&weekday!==0) return null;
+  return {starts_at: fromZonedTime(day+'T08:00:00', TIME_ZONE).toISOString(), ends_at: fromZonedTime(day+'T17:00:00', TIME_ZONE).toISOString()};
 }
 // Starts stay inside normal business hours; finishing may use the extra hour.
 export function bookingHours(day: string): Interval|null {
