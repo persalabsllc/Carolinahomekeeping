@@ -8,7 +8,7 @@ import {checkOrigin,rateLimit,apiError} from '@/lib/security';
 export const dynamic='force-dynamic';
 export async function POST(req:Request){try{
   checkOrigin(req);
-  if(!canBook())return Response.json({slots:[],open:false},{headers:{'Cache-Control':'no-store'}});
+  if(!process.env.DATABASE_URL)return Response.json({slots:[],open:false},{headers:{'Cache-Control':'no-store'}});
   await rateLimit(req,'availability',60);
   const input=quoteSchema.parse(await req.json());
   const [pricing,scheduling]=await Promise.all([getConfig(),getScheduling()]);
@@ -20,5 +20,5 @@ export async function POST(req:Request){try{
   const candidates=availableAppointments(durationMinutes,occupancy,scheduling.teamCapacity,now,pricing.leadHours);
   const check=weeks&&candidates.length?seriesCapacityChecker(snapshot,scheduling.teamCapacity,candidates[0].starts_at,candidates.at(-1)!.starts_at):null;
   const slots=candidates.filter(s=>!check||check({id:'proposed',anchorStart:s.starts_at,durationMinutes,weeks,kind:'booking'}));
-  return Response.json({slots,open:true,durationMinutes},{headers:{'Cache-Control':'no-store'}});
+  return Response.json({slots,open:canBook(),durationMinutes},{headers:{'Cache-Control':'no-store'}});
 }catch(e){return apiError(e);}}

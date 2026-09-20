@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {calculateQuote,defaultConfig,configSchema,services,type QuoteInput} from '../lib/pricing';
+import {conditionFlags} from '../lib/home-condition';
 const input:QuoteInput={zip:'28562',sqft:1500,bedrooms:3,bathrooms:2,pets:'none',condition:'maintained',emptyHome:true,service:'standard',frequency:'once',addons:{}};
 const expected=[[12900,17900,24900],[15900,21900,28900],[18900,25900,32900],[21900,29900,37900],[25900,34900,43900],[29900,39900,49900]];
 for(let tier=0;tier<6;tier++)for(let s=0;s<3;s++)test(`${services[s]} tier ${tier+1}: both boundaries`,()=>{
@@ -11,6 +12,11 @@ test('unsupported ZIP and large/unusual homes require review',()=>{
  for(const patch of [{zip:'90210'},{sqft:3500},{condition:'excessive' as const},{service:'move' as const,emptyHome:false}])assert.equal(calculateQuote({...input,...patch},defaultConfig).review,true);
 });
 test('deep clean required for buildup',()=>assert.equal(calculateQuote({...input,condition:'buildup'},defaultConfig).review,true));
+test('special conditions require review for every service, even when maintained is selected',()=>{
+ for(const flag of conditionFlags)for(const service of services){const q=calculateQuote({...input,service,condition:'maintained',conditionFlags:[flag]},defaultConfig);assert.equal(q.review,true);assert.equal(q.total,0);}
+ assert.equal(calculateQuote({...input,conditionFlags:[]},defaultConfig).total,18900);
+ assert.throws(()=>calculateQuote({...input,conditionFlags:['unrecognized']},defaultConfig));
+});
 test('recurring discounts apply only to cleaning, not extras',()=>{
  for(const [frequency,expected] of [['four_weeks',17955],['two_weeks',17010],['weekly',16065]] as const){const q=calculateQuote({...input,frequency,addons:{oven:1}},defaultConfig);assert.equal(q.total,expected+3500);}
 });

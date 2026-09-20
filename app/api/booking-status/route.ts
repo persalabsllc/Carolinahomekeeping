@@ -11,8 +11,9 @@ export async function GET(req:Request){
  try{const sql=db();const [hold]=await sql`select id from checkout_holds where stripe_session_id=${id} and token_hash=${hash(leadToken)}`;if(!hold)return Response.json({error:'We couldn’t verify this booking in your browser. Please check your email.'},{status:403});
  const session=await stripe().checkout.sessions.retrieve(id);const booking=await fulfillSession(session);
  if(!booking)return Response.json({status:session.status==='expired'?'expired':'pending'},{headers:{'Cache-Control':'no-store'}});
- const [slot]=await sql`select starts_at,ends_at from appointment_slots where id=${booking.slot_id}`;
+ const [slot]=await sql`select starts_at from appointment_slots where id=${booking.slot_id}`;
+ const [home]=await sql`select address,city,zip from homes where id=${booking.home_id}`;
  const [email]=await sql`select status from email_outbox where dedupe_key=${'confirmation:'+booking.id}`;
- after(()=>drainOutbox());return Response.json({status:'confirmed',reference:booking.reference,service:booking.service,amount:booking.amount,slot,frequency:booking.frequency,manageUrl:booking.recurring_plan_id?await managementLink(booking.recurring_plan_id):null,emailStatus:email?.status||'pending'},{headers:{'Cache-Control':'no-store'}});
+ after(()=>drainOutbox());return Response.json({status:'confirmed',reference:booking.reference,service:booking.service,amount:booking.amount,slot,address:home?`${home.address}, ${home.city}, NC ${home.zip}`:undefined,addons:(booking.quote.addons||[]).map((a:{name:string;quantity:number})=>({name:a.name,quantity:a.quantity})),frequency:booking.frequency,manageUrl:booking.recurring_plan_id?await managementLink(booking.recurring_plan_id):null,emailStatus:email?.status||'pending'},{headers:{'Cache-Control':'no-store'}});
  }catch{return Response.json({error:'We’re still checking your payment. Please don’t pay again. Try refreshing in a moment.'},{status:503});}
 }
