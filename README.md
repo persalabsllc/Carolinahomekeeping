@@ -5,6 +5,7 @@ Production-oriented Next.js application for **Send A Scout LLC d/b/a Carolina Ho
 ## Stack and layout
 
 - Next.js 16 App Router, React 19, TypeScript. Coastal brand, responsive custom CSS, optimized supplied-logo derivative and generated interior photo.
+- Typography is self-hosted through `next/font/local` in `app/layout.tsx`: DM Sans declares its 100–1000 variable weight range in normal and italic styles; upright headings retain Libre Caslon Display and italic accents use Libre Caslon Text's real 400 italic. `app/typography.css` disables synthetic styles and leaves smoothing to the browser/OS. No text-blur, stroke or scaling hacks are used. Test font changes at desktop and 360–430px widths; operating-system font smoothing and native monitor resolution still affect appearance.
 - Postgres (dedicated Neon database), parameterized SQL through `postgres`.
 - Stripe hosted Checkout (cards and supported device wallets), signature-verified webhook, server-calculated totals.
 - Resend email, transactional confirmation outbox, allowlisted administrator password / optional email-code login with signed HttpOnly sessions.
