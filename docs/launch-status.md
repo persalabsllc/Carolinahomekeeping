@@ -58,3 +58,11 @@ Online payments remain explicitly disabled pending these connections. No real ch
 - Customer management links support payment details, invoices and cancellation. Cancellation releases unpaid future visits while retaining prepaid appointments under the cancellation policy.
 - Isolated database checks cover renewal failure/recovery, late payment, duplicate invoices, cancellation and competing recurring checkout holds. Calendar checks cover all cadences, DST, future blocks and materialized/rescheduled exceptions. An availability performance check with ten synthetic plans reduced 240 candidate checks from about 9 seconds to under half a second by reusing projections; no synthetic records were written to production.
 - Stripe account connection, real Stripe test-mode first-payment/renewal/decline/cancellation checks and delivered Resend email remain pending. Automated local tests are not a claim that provider payments have been exercised. Checkout stays disabled until these release gates pass.
+
+### Subscription preview verification
+
+- Production build and all 42 automated checks passed before deployment.
+- Isolated preview inspected at 390px: frequency choices and per-visit totals, selected add-on duration, real scheduling algorithm with synthetic recurring occupancy, full review and recurring disclosure, and customer plan-management screen. No horizontal overflow in the checked customer screens.
+- Biweekly fixture reserved Monday 9–11:30 on its repeating weeks; overlapping starts were absent while the alternate week remained available. Control Room showed the same occupied interval and subscription details.
+- Submit stayed disabled with no consent or only policy consent, and became enabled only after separate recurring authorization. No payment was submitted.
+- Preview fixtures live only on the QA branch, have no database connection and were not included in production.
