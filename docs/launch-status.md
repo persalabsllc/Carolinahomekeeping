@@ -1,5 +1,26 @@
 # Launch verification
 
+## Current status — September 20, 2026
+
+Live booking is enabled at https://www.carolinahomekeeping.com/book. This section supersedes the historical launch notes below.
+
+- Scope: GitHub `persalabsllc/Carolinahomekeeping`, Vercel `carolinahomekeeping`, and the Carolina Homekeeping Stripe account. Application code, prices, discounts, tax configuration, and scheduling rules were not changed for Stripe activation.
+- Vercel production has secret-type `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. The live key is restricted to the Checkout, subscription, invoice, customer, product/price, Payment Intent and customer portal permissions needed by the existing implementation. No credential values are stored in this repository.
+- `BOOKING_ENABLED=true` is Production only; `BOOKING_ENABLED=false` remains Preview only.
+- Active Stripe event destination `we_1UHogABocA84xWHFp2TAkZnX` targets https://www.carolinahomekeeping.com/api/stripe/webhook and subscribes to all 12 event types handled by the route. API version: `2026-08-26.dahlia`.
+- Production activation deployment `dpl_7mBvfqer5AJnpefoj2q9WUJyxBeJ` built successfully from application commit `111fe2d3d2fee8182f5ab97808bd4bd9cc242fb1`. Canonical-domain availability returned `open: true` for all four frequencies. Every returned start was Thursday or Sunday. Existing 8 AM–5 PM Eastern start hours, full-duration closing grace and one-cleaner capacity remain intact.
+- Live unpaid Checkout sessions were created for one-time, weekly, two-week and four-week service using the application's actual `checkoutParameters` and production public quotes. The one-time and weekly hosted pages rendered correctly. All four unpaid sessions were explicitly expired. Four real Stripe-signed expiration deliveries returned HTTP 200, and a duplicate resend reached the activation deployment with HTTP 200 at 18:09:43 UTC. An unsigned webhook request returned HTTP 400.
+- Stripe sandbox hosted Checkout rejected the documented decline test card, then completed one-time and all three recurring purchases using the documented successful test card. The recurring sessions charged the first visit exactly once, retained the correct cadence, and deferred the recurring charge until the day before visit two.
+- Stripe test clocks exercised successful renewal, declined renewal, recovery and cancellation for weekly, two-week and four-week subscriptions. Actual Stripe invoice responses were reconciled through `invoiceData` and `recordInvoice` in an isolated PGlite database. Amounts, invoice deduplication, failure/recovery statuses and retention of prepaid visits passed. Test subscriptions were canceled afterward.
+- Pricing spot check: standard cleaning at 1,500–1,999 sq ft, three bedrooms, two bathrooms and no extras remains $189.00 one time, $160.65 weekly, $170.10 every two weeks, and $179.55 every four weeks. All 71 existing automated tests and TypeScript passed; the production build passed.
+- Production browser checks covered the pricing/routine choices and live Thursday/Sunday appointment picker. Runtime logs on the activation deployment showed successful requests; the observed HTTP 400 was the deliberate unsigned-webhook check.
+
+Verification boundary: no real card was charged, and no production QA lead, customer, booking or subscription was created. Sandbox payment/invoice checks and isolated database reconciliation do not constitute a production paid-booking/confirmation-email round trip. Email delivery evidence from the earlier release is recorded separately in README.md. Temporary operator harnesses and keys are not deployed.
+
+## Historical implementation and pre-launch notes
+
+The following records describe earlier stages and are retained for context; their old schedule and disabled-booking statements are superseded by the current status above.
+
 ## Implemented
 
 - Coastal public site using the supplied logo, service pages, commercial inquiries, geographic pages, policies and technical SEO.
