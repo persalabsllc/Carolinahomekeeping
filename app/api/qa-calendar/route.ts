@@ -1,0 +1,2 @@
+import {cookies} from 'next/headers';
+export async function POST(req:Request){if(req.headers.get('origin')!==new URL(req.url).origin)return new Response('Forbidden',{status:403});const {scenario}=await req.json();if(!['open','busy','full','error'].includes(scenario))return new Response('Invalid',{status:400});(await cookies()).set('qa-calendar',scenario,{httpOnly:true,sameSite:'lax',secure:true,path:'/',maxAge:1800});return Response.json({ok:true});}

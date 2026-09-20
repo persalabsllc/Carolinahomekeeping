@@ -97,9 +97,9 @@ export function validAppointment(interval: Interval, now: Date, noticeHours: num
   if(minute%START_INTERVAL||new Date(interval.starts_at).getUTCSeconds()||new Date(interval.starts_at).getUTCMilliseconds())return false;
   return Date.parse(interval.starts_at)>=now.getTime()+noticeHours*3600000&&localDay(interval.starts_at)<nextDay(localDay(now),BOOKING_HORIZON_DAYS);
 }
-export function availableAppointments(durationMinutes: number, occupancy: Occupancy[], capacity: number, now: Date, noticeHours: number): AppointmentOption[] {
+export function availableAppointments(durationMinutes: number, occupancy: Occupancy[], capacity: number, now: Date, noticeHours: number, horizonDays = BOOKING_HORIZON_DAYS): AppointmentOption[] {
   const result:AppointmentOption[]=[];
-  for(let i=0;i<BOOKING_HORIZON_DAYS;i++){
+  for(let i=0;i<Math.min(horizonDays,BOOKING_HORIZON_DAYS);i++){
     const day=nextDay(localDay(now),i), hours=workingHours(day), extended=bookingHours(day);
     if(!hours||!extended)continue;
     for(let t=Date.parse(hours.starts_at);t<Date.parse(hours.ends_at)&&t+durationMinutes*60000<=Date.parse(extended.ends_at);t+=START_INTERVAL*60000){
