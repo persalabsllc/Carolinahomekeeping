@@ -10,9 +10,11 @@ await sql.begin(async tx=>{
  await tx.unsafe(readFileSync('db/001_initial.sql','utf8'));
  await tx.unsafe(readFileSync('db/002_duration_scheduling.sql','utf8'));
  await tx.unsafe(readFileSync('db/003_admin_passwords.sql','utf8'));
+ const allowed=(process.env.ADMIN_EMAILS||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+ // Revocation lives in the shared database so older deployment URLs cannot reuse an obsolete invite.
+ if(allowed.length)await tx.unsafe('update admin_invitations set used_at=now() where used_at is null and not(email=any($1::text[]))',[allowed]);
  if(process.env.ADMIN_SETUP_INVITE){
   const invite=invitationSchema.parse(JSON.parse(process.env.ADMIN_SETUP_INVITE));
-  const allowed=(process.env.ADMIN_EMAILS||'').split(',').map(s=>s.trim().toLowerCase());
   if(!allowed.includes(invite.email))throw new Error('Setup invitation email must be allowlisted.');
   await tx`insert into admin_invitations(token_hash,email,expires_at) values(${invite.tokenHash},${invite.email},${invite.expiresAt}) on conflict(token_hash) do nothing`;
  }
