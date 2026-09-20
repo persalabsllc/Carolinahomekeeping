@@ -32,6 +32,6 @@ export function ScheduleCalendar({occupancy,config,onBooking}:{occupancy:Occupan
         </div>;
       })}
     </div></div>
-    <p className="small-text" style={{padding:18}}>Open time is shared with online scheduling. A customer only sees starts that fit their entire cleaning before closing. Checkout holds stay reserved until payment is confirmed or Stripe confirms expiry.</p>
+    <p className="small-text" style={{padding:18}}>Open time is shared with online scheduling. A customer only sees starts that fit their entire cleaning, including up to one hour after closing. New appointments must start before normal closing time. Checkout holds stay reserved until payment is confirmed or Stripe confirms expiry.</p>
   </section>;
 }

@@ -2,15 +2,22 @@ import {cookies} from 'next/headers';
 import {randomInt,createHmac} from 'node:crypto';
 import {z} from 'zod';
 import {db} from '@/lib/db';
-import {allowedEmails,createSession} from '@/lib/auth';
+import {allowedEmails,setAdminSession} from '@/lib/auth';
+import {adminEmailSchema} from '@/lib/passwords';
+import {authenticatePassword} from '@/lib/password-store';
 import {sendEmail} from '@/lib/email';
 import {checkOrigin,rateLimit,limitKey,hash,apiError} from '@/lib/security';
 const digest=(s:string)=>createHmac('sha256',process.env.SESSION_SECRET!).update(s).digest('hex');
 export async function POST(req:Request){try{
- checkOrigin(req);if(!process.env.SESSION_SECRET||!process.env.RESEND_API_KEY)throw new Error('Sign-in is not configured yet.');
- const input=z.object({email:z.email().transform(s=>s.toLowerCase().trim()),code:z.string().regex(/^\d{6}$/).optional()}).parse(await req.json());
+ checkOrigin(req);if(!process.env.SESSION_SECRET||process.env.SESSION_SECRET.length<32)throw new Error('Sign-in is not configured yet.');
+ const input=z.object({email:adminEmailSchema,code:z.string().regex(/^\d{6}$/).optional(),password:z.string().min(1).max(128).optional()}).refine(i=>!(i.code&&i.password)).parse(await req.json());
  await rateLimit(req,'auth',12);await limitKey(hash('auth-email:'+input.email),12);
  const sql=db();
+ if(input.password!==undefined){
+  if(!await authenticatePassword(sql,input.email,input.password,allowedEmails()))return Response.json({error:'Sign-in failed. Check your email and password.'},{status:401});
+  await setAdminSession(input.email);return Response.json({ok:true},{headers:{'Cache-Control':'no-store'}});
+ }
+ if(!process.env.RESEND_API_KEY||!process.env.EMAIL_FROM)throw new Error('Sign-in by email is not available yet. Please use your password.');
  if(!input.code){
   if(allowedEmails().includes(input.email)){
    const code=String(randomInt(100000,1000000));
@@ -28,7 +35,7 @@ export async function POST(req:Request){try{
   await tx`update auth_codes set used=true where id=${row.id}`;return true;
  });
  if(!valid)throw new Error('Invalid code or expired code. Request a new code and try again.');
- (await cookies()).set('ch_admin',await createSession(input.email),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',maxAge:28800,path:'/'});
+ await setAdminSession(input.email);
  return Response.json({ok:true});
  }catch(e){return apiError(e);}}
 export async function DELETE(req:Request){try{checkOrigin(req);(await cookies()).delete('ch_admin');return Response.json({ok:true});}catch(e){return apiError(e);}}

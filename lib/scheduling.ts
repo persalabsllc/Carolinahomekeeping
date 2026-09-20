@@ -4,6 +4,7 @@ import {defaultConfig, type QuoteInput, type Service} from './pricing';
 
 export const TIME_ZONE = 'America/New_York';
 export const START_INTERVAL = 30;
+export const FINISH_GRACE_MINUTES = 60;
 export const BOOKING_HORIZON_DAYS = 90;
 export const SCHEDULE_LOCK = 72901642;
 const minutes = z.number().int().min(15).max(540).multipleOf(15);
@@ -36,6 +37,11 @@ export function workingHours(day: string): Interval|null {
   if(weekday===0) return null;
   return {starts_at: fromZonedTime(day+'T08:00:00', TIME_ZONE).toISOString(), ends_at: fromZonedTime(day+(weekday===6?'T14:00:00':'T17:00:00'), TIME_ZONE).toISOString()};
 }
+// Starts stay inside normal business hours; finishing may use the extra hour.
+export function bookingHours(day: string): Interval|null {
+  const hours=workingHours(day);
+  return hours?{...hours,ends_at:new Date(Date.parse(hours.ends_at)+FINISH_GRACE_MINUTES*60000).toISOString()}:null;
+}
 export function estimateMinutes(input: Pick<QuoteInput,'service'|'addons'>, config: SchedulingConfig): number {
   return config.serviceMinutes[input.service]+Object.entries(input.addons).reduce((sum,[id,quantity]) => sum+(config.addonMinutes[id]??30)*quantity,0);
 }
@@ -48,7 +54,7 @@ export const overlaps = (a: Interval,b: Interval) => Date.parse(a.starts_at)<Dat
 // Half-open intervals: one job may begin exactly when another finishes.
 // Sweep each boundary, not the total number of jobs touching the interval.
 export function availableSegments(day: string, occupancy: Occupancy[], capacity: number): (Interval & {remaining: number})[] {
-  const hours=workingHours(day); if(!hours) return [];
+  const hours=bookingHours(day); if(!hours) return [];
   const start=Date.parse(hours.starts_at), end=Date.parse(hours.ends_at);
   const relevant=occupancy.filter(o=>overlaps(o,hours));
   const points=[...new Set([start,end,...relevant.flatMap(o=>[Math.max(start,Date.parse(o.starts_at)),Math.min(end,Date.parse(o.ends_at))])])].sort((a,b)=>a-b);
@@ -75,8 +81,9 @@ export function appointmentInterval(start: string, durationMinutes: number): Int
 }
 export function validAppointment(interval: Interval, now: Date, noticeHours: number): boolean {
   if(!Number.isFinite(Date.parse(interval.starts_at))||!Number.isFinite(Date.parse(interval.ends_at)))return false;
-  const hours=workingHours(localDay(interval.starts_at));
-  if(!hours||interval.starts_at<hours.starts_at||interval.ends_at>hours.ends_at||interval.ends_at<=interval.starts_at)return false;
+  const day=localDay(interval.starts_at), hours=workingHours(day), extended=bookingHours(day);
+  const start=Date.parse(interval.starts_at), end=Date.parse(interval.ends_at);
+  if(!hours||!extended||start<Date.parse(hours.starts_at)||start>=Date.parse(hours.ends_at)||end>Date.parse(extended.ends_at)||end<=start)return false;
   const minute=Number(formatInTimeZone(new Date(interval.starts_at),TIME_ZONE,'m'));
   if(minute%START_INTERVAL||new Date(interval.starts_at).getUTCSeconds()||new Date(interval.starts_at).getUTCMilliseconds())return false;
   return Date.parse(interval.starts_at)>=now.getTime()+noticeHours*3600000&&localDay(interval.starts_at)<nextDay(localDay(now),BOOKING_HORIZON_DAYS);
@@ -84,9 +91,9 @@ export function validAppointment(interval: Interval, now: Date, noticeHours: num
 export function availableAppointments(durationMinutes: number, occupancy: Occupancy[], capacity: number, now: Date, noticeHours: number): AppointmentOption[] {
   const result:AppointmentOption[]=[];
   for(let i=0;i<BOOKING_HORIZON_DAYS;i++){
-    const day=nextDay(localDay(now),i), hours=workingHours(day);
-    if(!hours)continue;
-    for(let t=Date.parse(hours.starts_at);t+durationMinutes*60000<=Date.parse(hours.ends_at);t+=START_INTERVAL*60000){
+    const day=nextDay(localDay(now),i), hours=workingHours(day), extended=bookingHours(day);
+    if(!hours||!extended)continue;
+    for(let t=Date.parse(hours.starts_at);t<Date.parse(hours.ends_at)&&t+durationMinutes*60000<=Date.parse(extended.ends_at);t+=START_INTERVAL*60000){
       const interval=appointmentInterval(new Date(t).toISOString(),durationMinutes);
       if(validAppointment(interval,now,noticeHours)&&hasCapacity(interval,occupancy,capacity))result.push({...interval,id:interval.starts_at});
     }

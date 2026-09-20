@@ -7,12 +7,12 @@ Production-oriented Next.js application for **Send A Scout LLC d/b/a Carolina Ho
 - Next.js 16 App Router, React 19, TypeScript. Coastal brand, responsive custom CSS, optimized supplied-logo derivative and generated interior photo.
 - Postgres (dedicated Neon database), parameterized SQL through `postgres`.
 - Stripe hosted Checkout (cards and supported device wallets), signature-verified webhook, server-calculated totals.
-- Resend email, transactional confirmation outbox, allowlisted administrator email-code login with signed HttpOnly sessions.
+- Resend email, transactional confirmation outbox, allowlisted administrator password / optional email-code login with signed HttpOnly sessions.
 - `lib/pricing.ts`: shared validated pricing model; `settings.pricing` is the editable source of truth after migration.
 - `app/book`, `components/booking-flow.tsx`: eight-step residential funnel.
 - `app/api/checkout`, `lib/payments.ts`: atomic slot reservations, checkout, idempotent fulfillment.
 - `app/control-room`, `components/control-room.tsx`, `app/api/admin`: authenticated administration.
-- `db/001_initial.sql` and `db/002_duration_scheduling.sql`: schema, private-photo metadata and scheduling blocks.
+- `db/001_initial.sql`, `db/002_duration_scheduling.sql`, `db/003_admin_passwords.sql`: core schema, scheduling blocks and administrator access.
 - `lib/scheduling.ts`: shared Eastern business hours, duration estimates and interval availability.
 - `lib/schedule-store.ts`: the database occupancy query and transaction reservation guard.
 
@@ -26,6 +26,7 @@ Copy `.env.example` to `.env.local` for local development. Never commit credenti
 | `APP_URL` | Canonical HTTPS origin, e.g. `https://carolinahomekeeping.com`; Stripe redirects use this server-side |
 | `SESSION_SECRET` | At least 32 random characters for admin session signing and code hashing |
 | `ADMIN_EMAILS` | Comma-separated exact allowlist of administrator emails |
+| `ADMIN_SETUP_INVITE` | Optional production-only JSON `{email,tokenHash,expiresAt}` for one-time password activation; generated with the script below |
 | `STRIPE_SECRET_KEY` | Project-appropriate server secret; test key in test environment, live key in production |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for this app’s webhook endpoint |
 | `RESEND_API_KEY` | Transactional email credential |
@@ -70,7 +71,11 @@ Cancelling a booking in Control Room releases capacity but does not issue a refu
 
 ## Control Room
 
-`/control-room` uses an exact email allowlist, six-digit codes expiring in ten minutes, hashed codes with a server-secret HMAC, five attempts per code, database-backed IP/email rate limits, and an eight-hour signed HttpOnly SameSite cookie. All admin mutations independently check authentication and request origin. No public registration or default admin password exists.
+`/control-room` supports password login without Resend. Passwords are individually salted and hashed with asynchronous scrypt (N=131072, r=8, p=1); plaintext passwords are never stored or logged. Access requires the exact `ADMIN_EMAILS` allowlist on every request. Authentication uses database-backed IP/email rate limits and an eight-hour signed Secure/HttpOnly/SameSite cookie. All admin mutations independently check authentication and request origin. No public registration or default admin password exists.
+
+For first access, run `node scripts/create-admin-invite.mjs owner@example.com https://your-origin` locally. Treat its output as private. Save only its `environmentValue` into the production `ADMIN_SETUP_INVITE` environment variable and redeploy. Migration stores the token hash and expiry without reactivating a used invitation. Give `setupUrl` privately to that owner; it expires after 72 hours. The owner validates the link, chooses a 12–128 character password and is signed in. The token is in the URL fragment (not server request logs), is stripped from browser history on load, and can activate only its approved email once. Reloading the setup page requires reopening the original invitation. The setup link cannot overwrite an existing password. Remove the provisioning environment variable after activation; existing credentials persist.
+
+When Resend and `EMAIL_FROM` are ready, the login page also offers email codes (ten-minute expiry, HMAC hashes, five guesses per code). This provides a secondary login method if a password is forgotten. Until email is connected, access recovery requires an authenticated operator; there is no public password reset or login bypass. [OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) and [Node scrypt documentation](https://nodejs.org/api/crypto.html#cryptoscryptpassword-salt-keylen-options-callback) informed the implementation.
 
 The dashboard shows today/upcoming appointments, leads, recorded revenue net of refunds, cancellations and email-delivery attention. Calendar has day/week/month views. Bookings expose the selected scope, home/contact/access details, notes and status. Customers include home profiles, history and revenue. Leads retain incomplete paid-booking attempts, commercial inquiries and contact requests.
 
@@ -81,7 +86,7 @@ The initial list views are capped at 1,000 records. Add paginated queries/report
 ## Defaults requiring owner review
 
 - ZIPs: 28560 and 28562; these are broader than municipal boundaries. Confirm travel coverage before opening dates.
-- Owner-authorized working hours: Monday–Friday 8 AM–5 PM, Saturday 8 AM–2 PM, Sunday closed, in America/New_York. Start options are generated every 30 minutes for the next 90 calendar days, honoring the configured minimum notice. Full estimated duration must fit before closing. No manual opening of individual windows is needed.
+- Owner-authorized working hours: Monday–Friday 8 AM–5 PM, Saturday 8 AM–2 PM, Sunday closed, in America/New_York. Start options are generated every 30 minutes for the next 90 calendar days, honoring the configured minimum notice. Starts must be before normal closing time; full estimated duration may extend up to one hour after closing (6 PM weekdays, 3 PM Saturdays). No manual opening of individual windows is needed.
 - Initial capacity is one cleaning team. Increase only when that many teams can work simultaneously. Staffing, travel and breaks remain an operational responsibility. No automatic travel buffer is added; time off can be blocked.
 - Standard: 120 minutes; Deep: 180 minutes; Move: 240 minutes (initial assumption requiring owner confirmation). Every paid add-on unit adds 30 minutes by default, configurable individually. Ordinary included bed making is already in base time; paid linen changes add time per bed. Estimates are flat per service initially, not size-adjusted.
 - Duration changes apply to new checkout holds. Paid bookings and reschedules retain the originally reserved interval length. Abandoned holds block their entire interval until Stripe confirms they are expired. Public checkout remains gated by BOOKING_ENABLED and provider readiness.
@@ -101,7 +106,7 @@ Leads are captured only after contact details are submitted, with a clear servic
 
 ## Quality checks
 
-`npm test` covers all 18 base service/size combinations at both boundaries, ZIP and condition review, add-on quantities, taxes, every discount, half-bathroom adjustments and invalid pricing inputs. `tests/scheduling.test.ts` also covers business hours, DST, full-duration boundaries, quantity-based duration, interval capacity, concurrent reservation attempts in an isolated PGlite database, cancellation, rescheduling and block release. `npm run build` runs TypeScript and production compilation.
+`npm test` covers all 18 base service/size combinations at both boundaries, ZIP and condition review, add-on quantities, taxes, every discount, half-bathroom adjustments and invalid pricing inputs. `tests/scheduling.test.ts` also covers business hours, DST, full-duration boundaries, quantity-based duration, interval capacity, concurrent reservation attempts in an isolated PGlite database, cancellation, rescheduling and block release. `tests/auth.test.ts` covers password hashing and rejection, invitation expiry, allowlist enforcement, concurrent single-use activation and password authentication in an isolated database. `npm run build` runs TypeScript and production compilation.
 
 Before enabling live bookings, verify in an isolated test environment:
 

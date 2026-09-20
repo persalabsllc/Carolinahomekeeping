@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
 import {fromZonedTime} from 'date-fns-tz';
-import {defaultScheduling,estimateMinutes,workingHours,availableAppointments,appointmentInterval,validAppointment,hasCapacity,availableSegments,localDay,nextDay,type Occupancy} from '../lib/scheduling';
+import {defaultScheduling,estimateMinutes,workingHours,bookingHours,availableAppointments,appointmentInterval,validAppointment,hasCapacity,availableSegments,localDay,nextDay,type Occupancy} from '../lib/scheduling';
 import {getScheduling,lockSchedule,readOccupancy,reserveInterval,type ScheduleSql} from '../lib/schedule-store';
 const eastern=(s:string)=>fromZonedTime(s,'America/New_York').toISOString();
 const now=new Date('2026-09-20T00:00:00Z');
@@ -21,17 +21,28 @@ test('duration estimates include every paid add-on unit; ordinary bed making rem
 test('fixed Eastern hours, Sundays closed, DST changes preserve local hours',()=>{
  assert.deepEqual(workingHours('2026-09-21'),{starts_at:'2026-09-21T12:00:00.000Z',ends_at:'2026-09-21T21:00:00.000Z'});
  assert.equal(workingHours('2026-09-20'),null);
+ assert.equal(bookingHours('2026-09-20'),null);
+ assert.equal(bookingHours('2026-09-21')?.ends_at,eastern('2026-09-21T18:00:00'));
+ assert.equal(bookingHours('2026-11-02')?.ends_at,eastern('2026-11-02T18:00:00'));
  assert.equal(workingHours('2026-09-26')?.ends_at,'2026-09-26T18:00:00.000Z');
  assert.equal(workingHours('2026-10-30')?.starts_at,'2026-10-30T12:00:00.000Z');
  assert.equal(workingHours('2026-11-02')?.starts_at,'2026-11-02T13:00:00.000Z');
  assert.equal(workingHours('2027-03-15')?.starts_at,'2027-03-15T12:00:00.000Z');
 });
-test('full cleaning must finish by closing and starts use a half-hour grid',()=>{
+test('finishes may use one extra hour, but starts remain inside normal hours',()=>{
  const valid=(day:string,minutes:number)=>validAppointment(appointmentInterval(eastern(day),minutes),now,0);
  assert.ok(valid('2026-09-21T15:00:00',120));
- assert.equal(valid('2026-09-21T15:30:00',120),false);
+ assert.ok(valid('2026-09-21T15:30:00',120));
+ assert.ok(valid('2026-09-21T16:00:00',120));
+ assert.equal(valid('2026-09-21T16:30:00',120),false);
+ assert.ok(valid('2026-09-21T16:30:00',90));
+ assert.equal(valid('2026-09-21T17:00:00',30),false);
+ assert.equal(valid('2026-09-21T17:30:00',30),false);
  assert.ok(valid('2026-09-26T11:00:00',180));
- assert.equal(valid('2026-09-26T11:30:00',180),false);
+ assert.ok(valid('2026-09-26T11:30:00',180));
+ assert.ok(valid('2026-09-26T12:00:00',180));
+ assert.equal(valid('2026-09-26T12:30:00',180),false);
+ assert.equal(valid('2026-09-26T14:00:00',30),false);
  assert.equal(valid('2026-09-21T07:30:00',120),false);
  assert.equal(valid('2026-09-20T08:00:00',120),false);
  assert.equal(valid('2026-09-21T08:15:00',120),false);
@@ -40,9 +51,9 @@ test('full cleaning must finish by closing and starts use a half-hour grid',()=>
 test('a 9–1 booking blocks every overlapping start and permits an exact 1 PM start',()=>{
  const occupancy=[block('2026-09-21T09:00:00',240)];
  const options=availableAppointments(120,occupancy,1,now,24).filter(s=>localDay(s.starts_at)==='2026-09-21');
- assert.deepEqual(options.map(s=>s.starts_at),['13:00','13:30','14:00','14:30','15:00'].map(t=>eastern('2026-09-21T'+t+':00')));
+ assert.deepEqual(options.map(s=>s.starts_at),['13:00','13:30','14:00','14:30','15:00','15:30','16:00'].map(t=>eastern('2026-09-21T'+t+':00')));
  const segments=availableSegments('2026-09-21',occupancy,1);
- assert.deepEqual(segments.map(s=>[s.starts_at,s.ends_at]),[[eastern('2026-09-21T08:00:00'),eastern('2026-09-21T09:00:00')],[eastern('2026-09-21T13:00:00'),eastern('2026-09-21T17:00:00')]]);
+ assert.deepEqual(segments.map(s=>[s.starts_at,s.ends_at]),[[eastern('2026-09-21T08:00:00'),eastern('2026-09-21T09:00:00')],[eastern('2026-09-21T13:00:00'),eastern('2026-09-21T18:00:00')]]);
 });
 test('capacity uses concurrent overlap, with holds and all-team blocks',()=>{
  const request=appointmentInterval(eastern('2026-09-21T08:00:00'),240);
@@ -55,10 +66,12 @@ test('capacity uses concurrent overlap, with holds and all-team blocks',()=>{
 test('notice, horizon, Saturdays and oversized selections are enforced in generated choices',()=>{
  const options=availableAppointments(240,[],1,now,24);
  assert.ok(options.length>0);
+ assert.ok(availableAppointments(600,[],1,now,24).some(s=>s.starts_at===eastern('2026-09-21T08:00:00')));
+ assert.equal(availableAppointments(120,[block('2026-09-21T17:30:00',30,'block')],1,now,24).some(s=>s.starts_at===eastern('2026-09-21T16:00:00')),false);
  assert.ok(options.every(s=>validAppointment(s,now,24)));
  const saturday=options.filter(s=>localDay(s.starts_at)==='2026-09-26');
- assert.equal(saturday.at(-1)?.starts_at,eastern('2026-09-26T10:00:00'));
- assert.equal(availableAppointments(600,[],1,now,24).length,0);
+ assert.equal(saturday.at(-1)?.starts_at,eastern('2026-09-26T11:00:00'));
+ assert.equal(availableAppointments(615,[],1,now,24).length,0);
  assert.ok(options.every(s=>localDay(s.starts_at)<nextDay(localDay(now),90)));
 });
 test('database reservations, holds, cancellation and rescheduling share the same interval rules',async()=>{

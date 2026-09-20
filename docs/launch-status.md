@@ -10,24 +10,24 @@
 ## Verification so far
 
 - Production build and TypeScript: passed.
-- 34 automated checks: passed. Includes all pricing tiers, add-ons, recurring discounts and a real in-process Postgres migration/constraint test.
+- 36 automated checks: passed. Includes all pricing tiers, add-ons, recurring discounts and a real in-process Postgres migration/constraint test.
 - Production Vercel deployment: READY.
 - Desktop homepage and booking steps: inspected in browser.
 - Phone-width homepage, home details, service choices, add-ons and frequency: inspected at a 375px content width in an isolated preview. No horizontal overflow observed. Local-font inheritance corrected after visual inspection.
 - Browser checks passed for supported/unsupported ZIP, Standard/Deep/Move prices, empty-home eligibility, move cabinet exclusion, add-ons, recurring totals and the honest no-availability fallback.
 - Commercial inquiry and residential scheduling-interest submission: saved and verified in the production database, including quote and stage. Two explicitly labeled internal QA leads were closed and marked do-not-contact; they are never publicly displayed. No test bookings or payments were created.
-- Unauthenticated Control Room: does not expose customer records. Sign-in awaits email setup.
+- Unauthenticated Control Room: does not expose customer records. Password sign-in is independent of email setup. Owner activation uses a private, single-use invitation.
 - Dependency audit: no production vulnerabilities reported.
 
 ## Connections still required before paid launch
 
 - Stripe sign-in/appropriate account credentials and webhook setup; then success/decline and confirmation end-to-end tests with test credentials.
-- Resend access, verified sender and monitored reply-to email; then admin sign-in and delivered-email verification.
+- Resend access, verified sender and monitored reply-to email; then optional email-code sign-in and delivered-email verification.
 - Owner supplied working hours and initial duration rules. The scheduler now opens those hours automatically for one team once payment setup is complete; confirm staffing capacity and the provisional four-hour Move estimate before enabling live checkout.
 - GoDaddy domain DNS, currently reported by Vercel as A @ → 216.150.1.1. Update APP_URL to https://carolinahomekeeping.com after DNS and HTTPS are valid.
 - Review initial tax treatment, service area, cancellation and legal policies.
 
-Stripe success/decline, a payment-created booking, delivered confirmation, signed-in administration and real appointment selection have **not** been verified end to end. They remain release gates, not claimed successes. The no-availability lead check is not a substitute for testing abandonment after contact entry in the paid booking path.
+Stripe success/decline, a payment-created booking, delivered confirmation, production owner activation, signed-in administration and real appointment selection have **not** been verified end to end. They remain release gates, not claimed successes. The no-availability lead check is not a substitute for testing abandonment after contact entry in the paid booking path.
 
 Online payments remain explicitly disabled pending these connections. No real charge has been taken or claimed. The Vercel URL is the usable current site.
 
@@ -40,3 +40,10 @@ Online payments remain explicitly disabled pending these connections. No real ch
 - Existing minimum notice remains 24 hours; public payment readiness remains unchanged.
 - Scheduling unit and isolated database tests passed. Production Stripe and email end-to-end verification remains pending account setup.
 - Preview-only visual checks passed for the shared calendar, phone-width appointment picker, changing duration, Saturday cutoff and booking selection. These checks used isolated illustrative UI fixtures; no production appointments or holds were created.
+
+## Closing grace and owner access
+
+- New appointments must start before 5 PM weekdays or 2 PM Saturdays. Estimated finishes may extend to 6 PM weekdays or 3 PM Saturdays. Sundays remain closed. Interval blocking and the shared calendar include the extra hour.
+- Password access uses salted scrypt hashes, exact administrator allowlisting, rate limiting and the existing eight-hour secure session. It no longer depends on Resend.
+- Owner setup invitations contain 256-bit random tokens, store only hashes, expire after 72 hours and cannot be replayed or overwrite an existing password. The owner chooses their password privately.
+- All 36 tests and the production build passed, including wrong credentials, expired/non-allowlisted invitations and concurrent attempts to consume the same invitation. The production owner password has not been chosen by the assistant.
