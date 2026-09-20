@@ -47,7 +47,7 @@ npm run build
 npm run dev
 ```
 
-Link only `persalabsllc/Carolinahomekeeping` to the `carolinahomekeeping` Vercel project. Use the Next.js preset and Node 24 (or the current supported Node LTS). Connect the dedicated Neon resource to this project. Run migrations before deploying with `DATABASE_URL`. The migration is repeatable, transaction-protected and initializes only pricing; it initializes scheduling rules but never creates customer data, bookings or fictional appointments.
+Link only `persalabsllc/Carolinahomekeeping` to the `carolinahomekeeping` Vercel project. Use the Next.js preset and Node 24 (or the current supported Node LTS). Connect the dedicated Neon resource to this project. Run migrations before deploying with `DATABASE_URL`. The migration is repeatable and transaction-protected. It initializes pricing and scheduling rules but never creates customer data, bookings or fictional appointments.
 
 The Vercel build includes an optional migration step when `DATABASE_URL` is present. Preview deployments must use a **separate database and Stripe test keys**. Do not connect this database to unrelated projects. After environment changes redeploy so functions receive them.
 

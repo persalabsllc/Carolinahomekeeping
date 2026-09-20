@@ -39,3 +39,4 @@ Online payments remain explicitly disabled pending these connections. No real ch
 - Control Room calendar displays open time, booked work, checkout holds and time-off blocks. Customers see available starts with estimated finish times.
 - Existing minimum notice remains 24 hours; public payment readiness remains unchanged.
 - Scheduling unit and isolated database tests passed. Production Stripe and email end-to-end verification remains pending account setup.
+- Preview-only visual checks passed for the shared calendar, phone-width appointment picker, changing duration, Saturday cutoff and booking selection. These checks used isolated illustrative UI fixtures; no production appointments or holds were created.
