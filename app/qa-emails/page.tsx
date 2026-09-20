@@ -1,0 +1,4 @@
+'use client';
+import {CommunicationsEditor} from '@/components/communications-editor';
+import {communicationDefaults} from '@/lib/communication-config';
+export default function Page(){return <div className="container section" style={{maxWidth:1000}}><p>ISOLATED QA — no live data or emails.</p><CommunicationsEditor config={communicationDefaults} emails={[{id:'fixture',subject:'Your cleaning is in 12 hours — CH-QA',recipient:'qa@example.invalid',kind:'reminder',status:'sent',attempts:1,created_at:'2026-09-21T12:00:00Z',sent_at:'2026-09-21T12:00:00Z'}]} feedback={[{booking_id:'fixture',reference:'CH-QA',name:'QA Customer',rating:3,message:'A test comment. This exists only on a QA branch.',contact_requested:true,email:'qa@example.invalid',updated_at:'2026-09-21T12:00:00Z'}]} busy={false} bookingOpen={false} onAction={async()=>true}/></div>;}
