@@ -201,9 +201,10 @@ body {
   .site-header {background: #f9fcfad9; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);}
   .image-caption {background: linear-gradient(120deg, #103d4ec7, #1f5366a3); -webkit-backdrop-filter: blur(18px) saturate(120%); backdrop-filter: blur(18px) saturate(120%);}
   .extra-list > div { -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+  .main-nav.open { -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 }
 
-@media (max-width: 1100px) and (min-width: 761px) {
+@media (max-width: 1100px) and (min-width: 901px) {
   .hero-copy {padding: 44px 30px;}
   .hero h1 {font-size: clamp(4rem, 7.7vw, 6rem);}
   .hero-image {min-height: 590px;}
@@ -215,7 +216,7 @@ body {
   .extra-list > div {padding: 22px 18px; gap: 13px;}
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .site-header {height: 86px;}
   .brand img {height: 76px;}
   .main-nav {top: 86px; background: #f8fcfaf5; border-color: #b6d1c6; box-shadow: 0 20px 35px -25px #07364b80;}
