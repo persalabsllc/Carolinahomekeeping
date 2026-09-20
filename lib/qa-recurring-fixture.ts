@@ -1,0 +1,12 @@
+import {fromZonedTime} from 'date-fns-tz';
+import {localDay,nextDay,appointmentInterval,defaultScheduling} from './scheduling';
+import {occurrenceStart,type ScheduleSnapshot} from './recurrence';
+import {calculateQuote,defaultConfig,type QuoteInput} from './pricing';
+let day=nextDay(localDay(new Date()),2);while(new Date(day+'T12:00:00Z').getUTCDay()!==1)day=nextDay(day);
+export const anchor=fromZonedTime(day+'T09:00:00','America/New_York').toISOString();
+const input:QuoteInput={zip:'28562',sqft:1500,bedrooms:3,bathrooms:2,pets:'none',condition:'maintained',emptyHome:false,service:'standard',frequency:'two_weeks',addons:{oven:1}};
+export const quote=calculateQuote(input,defaultConfig);
+export const plan={id:'qa-plan',stripe_subscription_id:'qa-only',name:'ISOLATED QA customer',email:'qa@example.invalid',address:'TEST ONLY',frequency:'two_weeks',status:'active',anchor_start:anchor,duration_minutes:150,interval_weeks:2,amount:quote.total,cancel_at:null};
+export const bookings=[0,1,2,3].map(i=>({id:'qa-'+i,...appointmentInterval(occurrenceStart(anchor,2,i),150),reference:'QA-PREVIEW-'+i,name:plan.name,email:plan.email,phone:'2525550100',address:plan.address,city:'New Bern',zip:'28562',service:'standard',frequency:'two_weeks',amount:quote.total,refunded_amount:0,payment_status:i===0?'paid':'scheduled',status:'confirmed',quote,details:{...input,home:{}},internal_notes:'Synthetic fixture, never written to a database.'}));
+export const snapshot:ScheduleSnapshot={fixed:bookings.map(b=>({id:b.id,booking_id:b.id,label:b.name,kind:'booking',starts_at:b.starts_at,ends_at:b.ends_at})),series:[{id:plan.id,planId:plan.id,anchorStart:anchor,durationMinutes:150,weeks:2,kind:'booking',label:plan.name+' · recurring'}],overrides:bookings.map((_,index)=>({planId:plan.id,index}))};
+export const data={plans:[plan],bookings,customers:[],leads:[],blocks:[],snapshot,occupancy:snapshot.fixed,scheduling:defaultScheduling,issues:{pending_email:0,failed_email:0}};
