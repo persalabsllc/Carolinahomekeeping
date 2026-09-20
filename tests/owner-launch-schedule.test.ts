@@ -87,6 +87,25 @@ test('solo capacity migration refuses overlapping checkout holds without alterin
  }finally{await db.close();}
 });
 
+test('migration repairs its driver-double-encoded JSON without resetting owner configuration',async()=>{
+ const db=await database();
+ try{
+  const custom={...defaultScheduling,teamCapacity:1,serviceMinutes:{standard:150,deep:210,move:270}};
+  const marker={teamCapacity:1,appliedAt:'2026-09-20T16:00:00Z'};
+  await db.query("insert into settings(key,value) values('scheduling',$1),('owner_schedule_thursday_sunday_20260920',$2)",[JSON.stringify(JSON.stringify(custom)),JSON.stringify(JSON.stringify(marker))]);
+  assert.equal(await db.transaction(tx=>applyOwnerLaunchSchedule(adapter(tx))),false);
+  assert.deepEqual(await getScheduling(adapter(db)),custom);
+  assert.deepEqual((await db.query<{value:unknown}>("select value from settings where key='owner_schedule_thursday_sunday_20260920'")).rows[0].value,marker);
+  assert.equal(await db.transaction(tx=>applyOwnerLaunchSchedule(adapter(tx))),false);
+  assert.deepEqual(await getScheduling(adapter(db)),custom);
+  const source=readFileSync('lib/owner-launch-schedule.ts','utf8');
+  // postgres.js JSON-encodes jsonb parameters, unlike PGlite. Force text input
+  // for already-serialized strings, then cast to jsonb inside PostgreSQL.
+  assert.match(source,/values\('scheduling',\$1::text::jsonb\)/);
+  assert.match(source,/values\(\$1,\$2::text::jsonb\)/);
+ }finally{await db.close();}
+});
+
 test('server reservations reject every closed weekday for one-time and recurring bookings',async()=>{
  const db=await database();
  try{
