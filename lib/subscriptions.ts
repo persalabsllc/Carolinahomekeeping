@@ -8,6 +8,7 @@ import {getScheduling} from './schedule-store';
 import {applySubscriptionState,materializePlan,recordInvoice,planRule,type Plan,type RenewalInvoice} from './subscription-store';
 import {managementLink} from './subscription-tokens';
 import {escapeHtml} from './email';
+import {emailContact} from './email-templates';
 import {money,frequencyNames,type Frequency} from './pricing';
 import {localTime} from './scheduling';
 export const stripeId=(value:string|{id:string}|null|undefined)=>typeof value==='string'?value:value?.id||null;
@@ -57,7 +58,7 @@ export async function syncSubscription(subscriptionId:string){
   const updated={...plan,status,cancel_at:cancelAt};await materializePlan(tx,updated);
   if(status!==plan.status||String(cancelAt||'')!==String(plan.cancel_at?new Date(plan.cancel_at).toISOString():'')){
    const message=status==='canceled'?'Your subscription has been canceled. Future automatic charges have stopped. Any prepaid appointments remain subject to the appointment cancellation policy.':status==='schedule_issue'?'Your recurring plan needs scheduling attention. Automatic collection is paused while we resolve it. Please contact us.':cancelAt?'Your subscription is scheduled to end. No new visits will be reserved after its end date. Prepaid appointments remain booked.':'';
-   if(message)await tx`insert into email_outbox(dedupe_key,recipient,subject,html) values(${`plan:${plan.id}:${status}:${cancelAt||'none'}`},${plan.details.contact.email},'Your Carolina Homekeeping subscription',${`<p>${message}</p><p><a href="${await managementLink(plan.id)}">Manage your plan</a></p>`}) on conflict(dedupe_key) do nothing`;
+   if(message)await tx`insert into email_outbox(dedupe_key,recipient,subject,html) values(${`plan:${plan.id}:${status}:${cancelAt||'none'}`},${plan.details.contact.email},'Your Carolina Homekeeping subscription',${`<p>${message}</p><p><a href="${await managementLink(plan.id)}">Manage your plan</a></p>${emailContact}`}) on conflict(dedupe_key) do nothing`;
   }
   return updated;
  });
@@ -75,7 +76,7 @@ export async function handleSubscriptionInvoice(invoiceId:string){
   const manage=await managementLink(plan.id);
   const subject=result.paid?(result.cancelled||result.mismatch||result.late?'Your cleaning payment needs review':'Your next cleaning is paid and scheduled'):'Action needed: your cleaning payment';
   const body=result.paid?`<p>We received ${money(invoice.amount_paid)} for your cleaning on ${date}, ${localTime(slot.starts_at)} Eastern.</p>${result.cancelled||result.mismatch||result.late?'<p>Your booking needs our attention. Please contact us before the appointment.</p>':'<p>Your usual cleaning and selected extras are reserved. Your home is handled.</p>'}`:'<p>Your automatic payment did not complete. Your reserved cleaning needs payment before we can provide service. Please update your payment method. If the appointment time has passed, contact us to arrange a new time.</p>';
-  await tx`insert into email_outbox(dedupe_key,recipient,subject,html) values(${`renewal:${invoice.id}:${result.paid?'paid':'failed'}`},${plan.details.contact.email},${subject},${`<h1>${escapeHtml(subject)}</h1>${body}<p>${escapeHtml(frequencyNames[plan.frequency as Frequency])} · ${result.booking.reference}</p><p><a href="${manage}">Manage your plan, update payment details or cancel</a></p>`}) on conflict(dedupe_key) do nothing`;
+  await tx`insert into email_outbox(dedupe_key,recipient,subject,html) values(${`renewal:${invoice.id}:${result.paid?'paid':'failed'}`},${plan.details.contact.email},${subject},${`<h1>${escapeHtml(subject)}</h1>${body}<p>${escapeHtml(frequencyNames[plan.frequency as Frequency])} · ${result.booking.reference}</p><p><a href="${manage}">Manage your plan, update payment details or cancel</a></p>${emailContact}`}) on conflict(dedupe_key) do nothing`;
  });
 }
 export async function reconcileSubscriptions(){
