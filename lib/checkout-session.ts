@@ -13,7 +13,7 @@ export function checkoutParameters(hold:Record<string,any>,origin:string):Stripe
  return {...common,mode:'subscription',payment_method_collection:'always',
   // Prepay the first visit now. Deferring the recurring line until the next renewal
   // avoids a duplicate charge or prorated partial cleaning between appointments.
-  line_items:[{...line,price_data:{...line.price_data,product_data:{...product,name:product.name+' — first visit'}}},{...line,price_data:{...line.price_data,unit_amount:quote.regularTotal??quote.total,recurring:{interval:'week',interval_count:weeks}}}],
+  line_items:[{...line,price_data:{...line.price_data,product_data:{...product,name:product.name+' — first visit'}}},{...line,price_data:{...line.price_data,unit_amount:quote.regularTotal??quote.total,product_data:{...product,description:`${frequencyNames[input.frequency]}. Includes selected extras${(quote.regularTax??quote.tax)?` and ${money(quote.regularTax??quote.tax)} tax`:''}.`},recurring:{interval:'week',interval_count:weeks}}}],
   subscription_data:{metadata,trial_end:Math.floor(Date.parse(nextRenewal(input.scheduledStart,weeks))/1000),trial_settings:{end_behavior:{missing_payment_method:'cancel'}}},
   custom_text:{submit:{message:`${money(quote.total)} for your first visit today, then ${money(quote.regularTotal??quote.total)} every ${weeks===1?'week':weeks+' weeks'}, starting the day before your second visit. Selected extras repeat. Renews automatically until canceled. Manage or cancel online using your confirmation link.`}},
  };
