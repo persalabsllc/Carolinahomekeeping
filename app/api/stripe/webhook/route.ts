@@ -1,4 +1,5 @@
 import {stripe,fulfillSession} from '@/lib/payments';
+import {handleSubscriptionInvoice,syncSubscription} from '@/lib/subscriptions';
 import {db} from '@/lib/db';
 import {drainOutbox} from '@/lib/email';
 import {after} from 'next/server';
@@ -11,6 +12,8 @@ export async function POST(req:Request){
  const sql=db();try{
   const [seen]=await sql`select id from stripe_events where id=${event.id}`;if(seen)return Response.json({received:true});
   if(event.type==='checkout.session.completed')await fulfillSession(event.data.object);
+  if(['invoice.paid','invoice.payment_failed','invoice.payment_action_required','invoice.voided','invoice.marked_uncollectible'].includes(event.type))await handleSubscriptionInvoice((event.data.object as {id:string}).id);
+  if(['customer.subscription.updated','customer.subscription.deleted','customer.subscription.paused','customer.subscription.resumed'].includes(event.type))await syncSubscription((event.data.object as {id:string}).id);
   if(event.type==='checkout.session.expired'){
    const session=event.data.object;if(session.metadata?.app==='carolina-homekeeping')await sql`update checkout_holds set status='expired' where stripe_session_id=${session.id} and status in ('creating','open')`;
   }

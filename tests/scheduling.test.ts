@@ -78,7 +78,7 @@ test('database reservations, holds, cancellation and rescheduling share the same
  const db=new PGlite();
  const adapter=(queryable:{query:(sql:string,params?:any[])=>Promise<any>})=>({unsafe:async(sql:string,params:any[]=[])=> (await queryable.query(sql,params)).rows}) as unknown as ScheduleSql;
  try{
-  for(const file of ['db/001_initial.sql','db/002_duration_scheduling.sql','db/002_duration_scheduling.sql'])await db.exec(readFileSync(file,'utf8'));
+  for(const file of ['db/001_initial.sql','db/002_duration_scheduling.sql','db/004_subscriptions.sql','db/004_subscriptions.sql'])await db.exec(readFileSync(file,'utf8'));
   await db.query("insert into settings(key,value) values('scheduling',$1)",[JSON.stringify(defaultScheduling)]);
   assert.deepEqual(await getScheduling(adapter(db)),defaultScheduling);
   let day=nextDay(localDay(new Date()),2);while(new Date(day+'T12:00:00Z').getUTCDay()!==1)day=nextDay(day);

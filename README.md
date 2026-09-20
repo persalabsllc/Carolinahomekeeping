@@ -12,9 +12,11 @@ Production-oriented Next.js application for **Send A Scout LLC d/b/a Carolina Ho
 - `app/book`, `components/booking-flow.tsx`: eight-step residential funnel.
 - `app/api/checkout`, `lib/payments.ts`: atomic slot reservations, checkout, idempotent fulfillment.
 - `app/control-room`, `components/control-room.tsx`, `app/api/admin`: authenticated administration.
-- `db/001_initial.sql`, `db/002_duration_scheduling.sql`, `db/003_admin_passwords.sql`: core schema, scheduling blocks and administrator access.
+- `db/001_initial.sql`, `db/002_duration_scheduling.sql`, `db/003_admin_passwords.sql`, `db/004_subscriptions.sql`: core schema, scheduling, administrator access and subscription invoices.
 - `lib/scheduling.ts`: shared Eastern business hours, duration estimates and interval availability.
 - `lib/schedule-store.ts`: the database occupancy query and transaction reservation guard.
+- `lib/recurrence.ts`, `lib/subscription-store.ts`: recurring calendar patterns, future visit materialization and idempotent invoice mapping.
+- `lib/checkout-session.ts`, `lib/subscriptions.ts`: Stripe payment/subscription checkout, renewal reconciliation and customer billing portal.
 
 ## Environment
 
@@ -56,16 +58,28 @@ Configure the custom domain in Vercel and apply the DNS records Vercel displays.
 
 ## Stripe and booking correctness
 
-Register `/api/stripe/webhook` for `checkout.session.completed`, `checkout.session.expired`, and `charge.refunded`. Use the endpoint’s own signing secret. Keep live and test credentials, databases, and endpoints separate.
+Register `/api/stripe/webhook` for `checkout.session.completed`, `checkout.session.expired`, `charge.refunded`, `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`, `invoice.voided`, `invoice.marked_uncollectible`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, and `customer.subscription.resumed`. Use the endpoint’s own signing secret. Keep live and test credentials, databases, and endpoints separate.
 
 1. Server validates all home, contact, policy and service inputs and recalculates the price from current configuration. Client totals are never trusted; a changed price requires review.
 2. A database transaction takes a shared scheduling advisory lock, locks the lead, recalculates duration and checks every overlapping booking/hold/block before reserving the entire interval. Different requested start times use the same lock; checking a single slot ID is not enough. Holds are counted until Stripe has definitely expired them or payment has been fulfilled. Time alone never releases ambiguous paid capacity.
 3. Stripe Checkout is created with an idempotency key tied to the hold. Cards only avoids delayed-payment booking ambiguity; supported Apple Pay / Google Pay are offered by Stripe/device eligibility.
-4. The verified webhook and authenticated return-page check call the same transaction-safe fulfillment function. One hold can create only one booking. Customer, home profile, recurring intent, booking, event and confirmation outbox are committed together.
+4. The verified webhook and authenticated return-page check call the same transaction-safe fulfillment function. One hold can create only one booking. Customer, home profile, subscription, bookings, event and confirmation outbox are committed together.
 5. The outbox sends confirmation independently and retries. A browser closing after payment does not prevent booking creation. Duplicate webhook events cannot duplicate bookings.
-6. Every five minutes `/api/cron` reconciles checkout state and retries email. It is authenticated by `CRON_SECRET`. Network-ambiguous Stripe creates are recovered before capacity is released.
+6. Every five minutes `/api/cron` reconciles checkout and subscription state, extends recurring appointments, and retries email. It is authenticated by `CRON_SECRET`. Network-ambiguous Stripe creates are recovered before capacity is released.
 
-Recurring discounts apply to the base clean and configured room adjustments, not extras. **This MVP charges only for the chosen visit.** Recurring frequency creates a coordination-needed plan; future appointments and payments are not silently invented or automatically charged.
+### Recurring subscriptions
+
+Recurring customers explicitly authorize automatic billing before Checkout. Weekly, every two weeks and every four weeks use Stripe `mode: subscription` with week intervals of 1, 2 or 4. Four weeks means 28 days, not a calendar month. One-time cleaning uses `mode: payment`.
+
+The first visit is prepaid at checkout using a one-time line item. An identical recurring line is deferred with `subscription_data.trial_end` until the day before the second visit; this is a Stripe billing mechanism, not an advertised free cleaning. Subsequent charges occur every 1/2/4 weeks. The complete per-visit amount includes the selected cleaning, repeated add-ons and applicable tax. Discounts apply to base cleaning and configured room adjustments, not extras. The accepted amount/scope/duration are stored on the plan; changing global prices does not silently change existing subscriptions. Customers see the recurring amount, next charge date, upcoming visits and cancellation terms before consenting.
+
+Each subscription reserves its original weekday and Eastern wall-clock time, including across daylight saving changes. Checkout checks the entire ongoing pattern against bookings, blocks and other subscription holds, under the shared transaction lock. Fixed exceptions and the 28-day cadence cycle protect the pattern beyond the visible 90-day booking horizon. The next 120 days are materialized as real booking records, extended by the reconciliation job. The calendar projects reservations beyond those records. A materialized/rescheduled visit replaces its original projected occurrence, so it is never counted twice. Batched availability projects occupied intervals once for all candidate starts.
+
+Signed invoice events attach each renewal to exactly one visit. Duplicate/out-of-order events cannot create duplicate appointments or downgrade paid invoices. Payment failure marks the visit as an issue and keeps its reserved time; staff must not perform an unpaid visit. Successful recovery restores an upcoming failed visit, while payments received after the visit time or cancellation require attention. Reconciliation processes five subscriptions per run, oldest checked first. Monitor/revisit batch sizing as volume grows.
+
+Control Room → Subscriptions shows status, price, cadence and customer, with billing-portal and cancellation actions. Customers receive a private 90-day management link in confirmation and renewal emails; it grants access only to that plan and uses a URL fragment removed from browser history. The Stripe portal supports payment-method updates, invoice history and cancellation, but not price or schedule changes. Canceling stops future automatic billing immediately and releases unpaid future visits. Paid appointments stay booked and follow the cancellation/refund policy. Customer plan cancellation does not itself issue a refund. Existing unpaid recurring visits cannot be canceled, completed or rescheduled individually in Control Room; manage the subscription instead. A paid visit can be rescheduled without changing the ongoing pattern. Changing an entire routine requires canceling the old plan and explicitly booking a new one; do not alter its price/cadence directly in Stripe. Unexpected provider-side changes pause collection for owner review.
+
+Historical frequency preferences without a Stripe subscription are never automatically converted or charged.
 
 Cancelling a booking in Control Room releases capacity but does not issue a refund or notify the customer automatically. Apply the accepted cancellation policy and refund through Stripe; its refund webhook updates recorded amounts. Reschedules and commercial job scheduling similarly require direct customer communication. Commercial jobs start unpaid; no payment is inferred.
 
@@ -81,7 +95,7 @@ The dashboard shows today/upcoming appointments, leads, recorded revenue net of 
 
 Pricing UI edits all six service tiers, add-on price/limits/tax/enabled state, recurring percentages, bedroom/bathroom adjustments, ZIPs and minimum notice. Availability UI edits concurrent team capacity, base service minutes and minutes per add-on unit, and blocks/releases time off. The day/week/month calendar displays bookings, checkout holds, blocked periods and free time from the same occupancy data used by checkout. It refreshes every 30 seconds while open. Blocking a period that overlaps an existing booking or checkout hold is rejected.
 
-The initial list views are capped at 1,000 records. Add paginated queries/reporting before volume outgrows this. Operational photo upload, cleaner accounts, automatic recurring billing and outbound marketing automation are intentionally not launched.
+The initial list views are capped at 1,000 records. Add paginated queries/reporting before volume outgrows this. Operational photo upload, cleaner accounts and outbound marketing automation are intentionally not launched. Subscription billing is implemented but remains gated by Stripe setup and provider testing.
 
 ## Defaults requiring owner review
 
@@ -106,7 +120,7 @@ Leads are captured only after contact details are submitted, with a clear servic
 
 ## Quality checks
 
-`npm test` covers all 18 base service/size combinations at both boundaries, ZIP and condition review, add-on quantities, taxes, every discount, half-bathroom adjustments and invalid pricing inputs. `tests/scheduling.test.ts` also covers business hours, DST, full-duration boundaries, quantity-based duration, interval capacity, concurrent reservation attempts in an isolated PGlite database, cancellation, rescheduling and block release. `tests/auth.test.ts` covers password hashing and rejection, invitation expiry, allowlist enforcement, concurrent single-use activation and password authentication in an isolated database. `npm run build` runs TypeScript and production compilation.
+`npm test` covers all 18 base service/size combinations at both boundaries, ZIP and condition review, add-on quantities, taxes, every discount, half-bathroom adjustments and invalid pricing inputs. `tests/scheduling.test.ts` also covers business hours, DST, full-duration boundaries, quantity-based duration, interval capacity, concurrent reservation attempts in an isolated PGlite database, cancellation, rescheduling and block release. `tests/auth.test.ts` covers password hashing and rejection, invitation expiry, allowlist enforcement, concurrent single-use activation and password authentication in an isolated database. `tests/recurrence.test.ts` covers subscription Checkout parameters and explicit consent, all cadences/DST, far-future conflicts, simultaneous recurring holds, recurring booking creation, invoice failure/recovery/idempotency, cancellation and late-payment handling in an isolated database. `npm run build` runs TypeScript and production compilation.
 
 Before enabling live bookings, verify in an isolated test environment:
 
@@ -115,9 +129,10 @@ Before enabling live bookings, verify in an isolated test environment:
 - Duration-aware start options, simultaneous overlapping attempts at last capacity, expired checkout, time-off blocks and closing-time boundaries.
 - Stripe test success (`4242 4242 4242 4242`) and decline (`4000 0000 0000 0002`), signature rejection, duplicate webhook delivery.
 - Paid booking in Control Room, customer record, lead conversion and delivered confirmation.
+- Each subscription cadence: first charge exactly once, next charge the day before visit two, ongoing invoices via Stripe test clocks, duplicated/reordered webhook delivery, declined renewal and recovery, customer/admin cancellation, preserved prepaid visits, portal payment updates and refund reconciliation. Confirm Stripe Checkout’s deferred recurring line plus immediate first-visit line in test mode before live launch.
 - Abandoned checkout saved as a lead, commercial inquiry and scheduled commercial job.
 - Admin unauthorized access rejection; internal notes and access data never public.
 
 Use an isolated database for payment and booking tests. The initial deployment verification created two explicitly labeled private QA inquiry records, then closed them with do-not-contact notes; it created no bookings or customer records. Current execution results and launch dependencies are tracked in `docs/launch-status.md`.
 
-References: [Stripe fulfillment](https://docs.stripe.com/checkout/fulfillment), [Checkout Sessions](https://docs.stripe.com/api/checkout/sessions/create), [NCDOR Sales and Use Tax](https://www.ncdor.gov/taxes-forms/sales-and-use-tax).
+References: [Stripe fulfillment](https://docs.stripe.com/checkout/fulfillment), [Checkout Sessions](https://docs.stripe.com/api/checkout/sessions/create), [Subscription trials and immediate invoice items](https://docs.stripe.com/billing/subscriptions/trials), [Subscription webhooks](https://docs.stripe.com/billing/subscriptions/webhooks), [NCDOR Sales and Use Tax](https://www.ncdor.gov/taxes-forms/sales-and-use-tax).

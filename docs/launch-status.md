@@ -10,7 +10,7 @@
 ## Verification so far
 
 - Production build and TypeScript: passed.
-- 36 automated checks: passed. Includes all pricing tiers, add-ons, recurring discounts and a real in-process Postgres migration/constraint test.
+- 42 automated checks: passed. Includes all pricing tiers, add-ons, recurring discounts and a real in-process Postgres migration/constraint test.
 - Production Vercel deployment: READY.
 - Desktop homepage and booking steps: inspected in browser.
 - Phone-width homepage, home details, service choices, add-ons and frequency: inspected at a 375px content width in an isolated preview. No horizontal overflow observed. Local-font inheritance corrected after visual inspection.
@@ -47,3 +47,14 @@ Online payments remain explicitly disabled pending these connections. No real ch
 - Password access uses salted scrypt hashes, exact administrator allowlisting, rate limiting and the existing eight-hour secure session. It no longer depends on Resend.
 - Owner setup invitations contain 256-bit random tokens, store only hashes, expire after 72 hours and cannot be replayed or overwrite an existing password. The owner chooses their password privately.
 - All 36 tests and the production build passed, including wrong credentials, expired/non-allowlisted invitations and concurrent attempts to consume the same invitation. The production owner password has not been chosen by the assistant.
+
+
+## Recurring subscription update
+
+- Recurring checkout uses Stripe subscription mode with weekly, two-week or four-week automatic billing. The first visit is charged at checkout; renewals start the day before visit two. The full displayed amount, including selected extras, repeats after explicit consent.
+- Removed public messaging that recurring visits would only be coordinated later. Homepage, frequency selection, final review, confirmation and policies describe automatic billing and scheduling.
+- The same weekday and Eastern time are reserved automatically. Full-series conflict checks and checkout holds prevent overlapping recurring sales. The Control Room calendar shares these reservations; Subscriptions provides billing/cancellation management.
+- Upcoming 120 days become booking records, with indefinite reservations projected beyond that. Reconciliation extends records. Invoice webhooks mark the matching visit paid or flag payment issues without duplicating appointments.
+- Customer management links support payment details, invoices and cancellation. Cancellation releases unpaid future visits while retaining prepaid appointments under the cancellation policy.
+- Isolated database checks cover renewal failure/recovery, late payment, duplicate invoices, cancellation and competing recurring checkout holds. Calendar checks cover all cadences, DST, future blocks and materialized/rescheduled exceptions. An availability performance check with ten synthetic plans reduced 240 candidate checks from about 9 seconds to under half a second by reusing projections; no synthetic records were written to production.
+- Stripe account connection, real Stripe test-mode first-payment/renewal/decline/cancellation checks and delivered Resend email remain pending. Automated local tests are not a claim that provider payments have been exercised. Checkout stays disabled until these release gates pass.

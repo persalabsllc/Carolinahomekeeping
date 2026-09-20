@@ -38,7 +38,7 @@ export async function POST(req:Request){try{
   if(pending)throw new Error('Payment is already being prepared. Please wait a moment and try again.');
   const scheduling=await getScheduling(tx);const durationMinutes=estimateMinutes(input,scheduling);
   if(raw.expectedDuration!==durationMinutes)throw new Error('The reserved cleaning time has changed. Please reload and select your appointment again.');
-  const slot=await reserveInterval(tx,input.scheduledStart,durationMinutes,scheduling,config.leadHours);
+  const slot=await reserveInterval(tx,input.scheduledStart,durationMinutes,scheduling,config.leadHours,undefined,input.frequency);
   const [h]=await tx`insert into checkout_holds(lead_id,slot_id,token_hash,status,expires_at,payload,quote) values(${lead.id},${slot.id},${hash(leadToken)},'creating',now()+interval '35 minutes',${tx.json(input)},${tx.json({...quote,durationMinutes})}) returning *`;
   await tx`update leads set stage='checkout',quoted_amount=${quote.total},updated_at=now() where id=${lead.id}`;
   return h;

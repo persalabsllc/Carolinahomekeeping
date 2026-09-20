@@ -1,3 +1,4 @@
+import {managementLink} from '@/lib/subscription-tokens';
 import {cookies} from 'next/headers';
 import {db} from '@/lib/db';
 import {hash} from '@/lib/security';
@@ -12,6 +13,6 @@ export async function GET(req:Request){
  if(!booking)return Response.json({status:session.status==='expired'?'expired':'pending'},{headers:{'Cache-Control':'no-store'}});
  const [slot]=await sql`select starts_at,ends_at from appointment_slots where id=${booking.slot_id}`;
  const [email]=await sql`select status from email_outbox where dedupe_key=${'confirmation:'+booking.id}`;
- after(()=>drainOutbox());return Response.json({status:'confirmed',reference:booking.reference,service:booking.service,amount:booking.amount,slot,emailStatus:email?.status||'pending'},{headers:{'Cache-Control':'no-store'}});
+ after(()=>drainOutbox());return Response.json({status:'confirmed',reference:booking.reference,service:booking.service,amount:booking.amount,slot,frequency:booking.frequency,manageUrl:booking.recurring_plan_id?await managementLink(booking.recurring_plan_id):null,emailStatus:email?.status||'pending'},{headers:{'Cache-Control':'no-store'}});
  }catch{return Response.json({error:'We’re still checking your payment. Please don’t pay again. Try refreshing in a moment.'},{status:503});}
 }

@@ -1,9 +1,10 @@
 'use client';
+import {occupancyForRange,type ScheduleSnapshot} from '@/lib/recurrence';
 import {useState} from 'react';
 import {ChevronLeft,ChevronRight} from 'lucide-react';
 import {formatInTimeZone} from 'date-fns-tz';
 import {localDay,localTime,nextDay,dayBounds,workingHours,availableSegments,overlaps,type Occupancy,type SchedulingConfig} from '@/lib/scheduling';
-export function ScheduleCalendar({occupancy,config,onBooking}:{occupancy:Occupancy[];config:SchedulingConfig;onBooking:(id:string)=>void}) {
+export function ScheduleCalendar({occupancy,config,onBooking,snapshot}:{snapshot?:ScheduleSnapshot;occupancy:Occupancy[];config:SchedulingConfig;onBooking:(id:string)=>void}) {
   const today=localDay(new Date());
   const [anchor,setAnchor]=useState(today);
   const [view,setView]=useState('week');
@@ -21,13 +22,14 @@ export function ScheduleCalendar({occupancy,config,onBooking}:{occupancy:Occupan
       {view!=='day'&&['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=><div className="calendar-label" key={day}>{day}</div>)}
       {days.map(day=>{
         const hours=workingHours(day),bounds=dayBounds(day);
-        const occupied=occupancy.filter(o=>overlaps(o,bounds));
-        const free=availableSegments(day,occupancy,config.teamCapacity);
+        const dayOccupancy=snapshot?occupancyForRange(snapshot,bounds.starts_at,bounds.ends_at):occupancy;
+        const occupied=dayOccupancy.filter(o=>overlaps(o,bounds));
+        const free=availableSegments(day,dayOccupancy,config.teamCapacity);
         const items=[...occupied.map(o=>({...o,remaining:0})),...free.map((o,i)=>({...o,id:'open-'+i,kind:'open' as const,label:'',booking_id:undefined}))].sort((a,b)=>a.starts_at.localeCompare(b.starts_at));
         return <div className={'schedule-day '+(day.slice(0,7)!==anchor.slice(0,7)?'muted-day':'')} key={day} aria-label={day}>
           <button className={'calendar-date '+(day===today?'today':'')} onClick={()=>{setAnchor(day);setView('day')}}>{formatInTimeZone(new Date(day+'T12:00:00Z'),'UTC',view==='day'?'EEEE, MMMM d':'d')}</button>
           {!hours&&<p className="calendar-closed">Closed Sunday</p>}
-          {items.map(o=><button key={o.kind+o.id} type="button" className={'calendar-event '+o.kind} disabled={o.kind!=='booking'} onClick={()=>o.booking_id&&onBooking(o.booking_id)}><strong>{localTime(o.starts_at)}–{localTime(o.ends_at)}</strong><span>{o.kind==='open'?`${o.remaining} ${o.remaining===1?'team':'teams'} available`:o.kind==='hold'?'Checkout reservation':o.label||'Blocked'}</span></button>)}
+          {items.map(o=><button key={o.kind+o.id} type="button" className={'calendar-event '+o.kind} disabled={!o.booking_id} onClick={()=>o.booking_id&&onBooking(o.booking_id)}><strong>{localTime(o.starts_at)}–{localTime(o.ends_at)}</strong><span>{o.kind==='open'?`${o.remaining} ${o.remaining===1?'team':'teams'} available`:o.kind==='hold'?'Checkout reservation':o.label||'Blocked'}</span></button>)}
           {hours&&!items.length&&<p className="calendar-closed">No free time</p>}
         </div>;
       })}

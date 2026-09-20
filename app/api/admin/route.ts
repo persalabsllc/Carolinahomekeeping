@@ -1,3 +1,5 @@
+import {capacityFits} from '@/lib/recurrence';
+import {cancelSubscription,portalSession,reconcileSubscriptions} from '@/lib/subscriptions';
 import {z} from 'zod';
 import {fromZonedTime} from 'date-fns-tz';
 import {requireAdmin} from '@/lib/auth';
@@ -7,7 +9,7 @@ import {checkOrigin,apiError} from '@/lib/security';
 import {drainOutbox} from '@/lib/email';
 import {reconcileHolds} from '@/lib/payments';
 import {randomBytes} from 'node:crypto';
-import {getScheduling,lockSchedule,readOccupancy,reserveInterval} from '@/lib/schedule-store';
+import {getScheduling,lockSchedule,readOccupancy,reserveInterval,getScheduleSnapshot} from '@/lib/schedule-store';
 import {schedulingSchema} from '@/lib/scheduling';
 const localDateTime=z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
 const eastern=(s:string)=>fromZonedTime(s+':00','America/New_York').toISOString();
@@ -19,8 +21,8 @@ export async function POST(req:Request){try{
   const config=schedulingSchema.parse(input.config);
   await sql.begin(async tx=>{
    await lockSchedule(tx);
-   const occupied=(await readOccupancy(tx,new Date().toISOString(),'9999-01-01T00:00:00Z')).filter(o=>o.kind!=='block');
-   if(occupied.some(o=>occupied.filter(x=>x.starts_at<=o.starts_at&&x.ends_at>o.starts_at).length>config.teamCapacity))throw new Error('Capacity cannot be reduced below existing bookings and checkout holds.');
+   const snapshot=await getScheduleSnapshot(tx);
+   if(!capacityFits(snapshot,config.teamCapacity,new Date().toISOString()))throw new Error('Capacity cannot be reduced below existing bookings and checkout holds.');
    await tx`insert into settings(key,value) values('scheduling',${tx.json(config)}) on conflict(key) do update set value=excluded.value,updated_at=now()`;
   });break;
  }
@@ -45,13 +47,14 @@ export async function POST(req:Request){try{
  }
  case 'booking_update':{
   const p=z.object({id:z.uuid(),status:z.enum(['confirmed','completed','cancelled','issue']),notes:z.string().max(10000)}).parse(input);
-  await sql.begin(async tx=>{await lockSchedule(tx);const [b]=await tx`select * from bookings where id=${p.id} for update`;if(!b)throw new Error('No matching booking.');if(b.status==='cancelled'&&p.status!=='cancelled')throw new Error('Cannot reopen a cancelled booking; schedule a new appointment.');await tx`update bookings set status=${p.status},internal_notes=${p.notes},completed_at=case when ${p.status}='completed' then coalesce(completed_at,now()) else completed_at end,updated_at=now() where id=${p.id}`;await tx`insert into booking_events(booking_id,event,actor,details) values(${p.id},'admin_updated',${actor},${tx.json({from:b.status,to:p.status})})`;});break;
+  await sql.begin(async tx=>{await lockSchedule(tx);const [b]=await tx`select * from bookings where id=${p.id} for update`;if(!b)throw new Error('No matching booking.');if(b.recurring_plan_id&&['scheduled','failed','unpaid'].includes(b.payment_status)&&['cancelled','completed'].includes(p.status))throw new Error('Please manage this subscription to stop future billing. Unpaid recurring visits cannot be canceled or completed individually.');if(b.status==='cancelled'&&p.status!=='cancelled')throw new Error('Cannot reopen a cancelled booking; schedule a new appointment.');await tx`update bookings set status=${p.status},internal_notes=${p.notes},completed_at=case when ${p.status}='completed' then coalesce(completed_at,now()) else completed_at end,updated_at=now() where id=${p.id}`;await tx`insert into booking_events(booking_id,event,actor,details) values(${p.id},'admin_updated',${actor},${tx.json({from:b.status,to:p.status})})`;});break;
  }
  case 'booking_reschedule':{
   const p=z.object({id:z.uuid(),start:localDateTime}).parse(input);
   await sql.begin(async tx=>{
    await lockSchedule(tx);
    const [b]=await tx`select b.*,s.starts_at,s.ends_at from bookings b join appointment_slots s on s.id=b.slot_id where b.id=${p.id} for update of b`;
+   if(b?.recurring_plan_id&&b.payment_status!=='paid')throw new Error('Please wait for payment before rescheduling a single recurring visit, or cancel the subscription from Subscriptions.');
    if(!b||b.status!=='confirmed')throw new Error('Cannot reschedule this booking in its current status.');
    const durationMinutes=(new Date(b.ends_at).getTime()-new Date(b.starts_at).getTime())/60000;
    const slot=await reserveInterval(tx,eastern(p.start),durationMinutes,await getScheduling(tx),0,b.id);
@@ -75,7 +78,9 @@ export async function POST(req:Request){try{
    await tx`insert into booking_events(booking_id,event,actor) values(${b.id},'commercial_job_scheduled',${actor})`;
   });break;
  }
- case 'retry_delivery':{if(process.env.STRIPE_SECRET_KEY)await reconcileHolds();await drainOutbox();break;}
+ case 'subscription_cancel':{const id=z.uuid().parse(input.id);await cancelSubscription(id);break;}
+ case 'subscription_portal':{const id=z.uuid().parse(input.id);const portal=await portalSession(id);await sql`insert into audit_log(actor,action,record_id) values(${actor},'subscription_portal',${id})`;return Response.json({url:portal.url});}
+ case 'retry_delivery':{if(process.env.STRIPE_SECRET_KEY){await reconcileHolds();await reconcileSubscriptions();}await drainOutbox();break;}
  default:throw new Error('Unknown action.');
  }
  await sql`insert into audit_log(actor,action,record_id) values(${actor},${String(input.action)},${input.id||input.leadId||null})`;
