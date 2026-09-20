@@ -6,6 +6,6 @@ const config: NextConfig = {
     {key:'Referrer-Policy',value:'strict-origin-when-cross-origin'},
     {key:'X-Frame-Options',value:'DENY'},
     {key:'Permissions-Policy',value:'camera=(), microphone=(), geolocation=()'},
-  ]}]; }
+  ]}, { source: '/clean-home', headers: [{key:'X-Robots-Tag',value:'noindex, nofollow, noarchive'}] }]; }
 };
 export default config;

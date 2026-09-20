@@ -127,6 +127,14 @@ Leads are captured only after contact details are submitted, with a clear servic
 
 ## Quality checks
 
+### Ad landing page
+
+`/clean-home` is an unlisted Facebook/Instagram ad destination. It is deliberately omitted from navigation and the sitemap, and sends both `noindex` metadata and an `X-Robots-Tag`. It is **not access-controlled**: anyone with the URL can open it, as required for ad clicks. It is not disallowed in robots.txt so crawlers can read its noindex directive. Do not add it to public menus.
+
+The page reuses `BookingFlow` in campaign mode: home/ZIP → service + routine + optional extras → appointment + address/contact → review/payment. The ordinary eight-step `/book` flow remains available. No pricing, scheduling, subscription or fulfillment engine is duplicated or changed. Optional access details and extras are collapsible. Campaign leads include their landing-page source in notes. No Meta Pixel, third-party ad tracking or new discount is silently enabled.
+
+Before Stripe launch, the live calendar offers an **unreserved appointment preference** and lead capture. It never implies a paid or confirmed booking. The existing checkout readiness gate controls both entry points. End-to-end Stripe test-mode verification is still required before paid ad spend. The 29-second brief is a friction-reduction goal, not a guaranteed completion time or published claim.
+
 `npm test` covers all 18 base service/size combinations at both boundaries, ZIP and condition review, add-on quantities, taxes, every discount, half-bathroom adjustments and invalid pricing inputs. `tests/scheduling.test.ts` also covers business hours, DST, full-duration boundaries, quantity-based duration, the reported $302.03 quote (now 215 minutes), five-minute total rounding, interval capacity, concurrent reservation attempts in an isolated PGlite database, cancellation, rescheduling and block release. `tests/auth.test.ts` covers password hashing and rejection, invitation expiry, allowlist enforcement, concurrent single-use activation and password authentication in an isolated database. `tests/recurrence.test.ts` covers subscription Checkout parameters and explicit consent, all cadences/DST, far-future conflicts, simultaneous recurring holds, recurring booking creation, invoice failure/recovery/idempotency, cancellation and late-payment handling in an isolated database. `npm run build` runs TypeScript and production compilation.
 
 Before enabling live bookings, verify in an isolated test environment:
