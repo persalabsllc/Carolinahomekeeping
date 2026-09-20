@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {conditionFlags,needsConditionReview} from './home-condition';
 
 export const services = ['standard', 'deep', 'move'] as const;
 export type Service = typeof services[number];
@@ -49,6 +50,7 @@ export const defaultConfig: PricingConfig = {
 export const quoteSchema = z.object({
   zip:z.string().regex(/^\d{5}$/), sqft:z.number().int().min(100).max(50000), bedrooms:z.number().int().min(0).max(20), bathrooms:z.number().min(0.5).max(20).multipleOf(0.5),
   pets:z.enum(['none','dog','cat','multiple','other']), condition:z.enum(['maintained','buildup','excessive']), emptyHome:z.boolean(),
+  conditionFlags:z.array(z.enum(conditionFlags)).max(4).optional(),
   service:z.enum(services), frequency:z.enum(frequencies), addons:z.record(z.string(),z.number().int().min(0).max(50)),
 });
 export type QuoteInput = z.infer<typeof quoteSchema>;
@@ -58,7 +60,7 @@ export function calculateQuote(raw:unknown,config:PricingConfig):Quote {
   const zero={base:0,roomAdjustment:0,addons:[],discount:0,discountPercent:0,subtotal:0,tax:0,total:0};
   if(!config.zips.includes(input.zip))return {...zero,review:true,reason:'We’re not serving this ZIP yet. Leave your details and we’ll check your location.'};
   if(input.sqft>=3500)return {...zero,review:true,reason:'Homes of 3,500 sq ft or more need a personal plan. Send us your details and we’ll help.'};
-  if(input.condition==='excessive')return {...zero,review:true,reason:'This home needs a little more planning. We’ll review the conditions with you before providing a price.'};
+  if(needsConditionReview(input))return {...zero,review:true,reason:'This home needs a little more planning. We’ll review the conditions with you before providing a price.'};
   if(input.service==='move'&&!input.emptyHome)return {...zero,review:true,reason:'Move cleaning is for an empty home. Choose deep cleaning for a furnished home, or ask us for a personal plan.'};
   if(input.condition==='buildup'&&input.service==='standard')return {...zero,review:true,reason:'For built-up grime, please choose a deep clean or move clean.'};
   const tier=config.tiers.find(t=>input.sqft<=t.maxSqft);

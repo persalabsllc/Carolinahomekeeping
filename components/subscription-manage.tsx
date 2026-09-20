@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {money,frequencyNames,serviceNames,type Frequency,type Service} from '@/lib/pricing';
-import {slotDate,slotTime} from './booking-flow';
+import {slotDate,slotTime} from '@/lib/appointment-display';
 export function SubscriptionManage(){
  const loaded=useRef(false);const [token,setToken]=useState(''),[data,setData]=useState<any>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  async function request(action:string,key=token){setBusy(true);setError('');try{const r=await fetch('/api/subscription',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:key,action})});const result=await r.json();if(!r.ok)throw new Error(result.error);if(result.url)window.location.assign(result.url);else setData(result);}catch(e){setError(e instanceof Error?e.message:'Please try again.')}finally{setBusy(false)}}
