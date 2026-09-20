@@ -5,7 +5,7 @@ import {money,serviceNames,frequencyNames,type PricingConfig,type QuoteInput,typ
 import {slotDate,slotTime} from '@/lib/appointment-display';
 import type {AppointmentOption} from '@/lib/scheduling';
 
-export function BookingSummary({config,input,quote,selectedSlot,revealed}:{config:PricingConfig;input:QuoteInput;quote:Quote|null;selectedSlot?:AppointmentOption;revealed:boolean}){
+export function BookingSummary({config,input,quote,selectedSlot,revealed,compact=false}:{config:PricingConfig;input:QuoteInput;quote:Quote|null;selectedSlot?:AppointmentOption;revealed:boolean;compact?:boolean}){
   const [expanded,setExpanded]=useState(false);
   const summary=useRef<HTMLElement>(null);
   const priced=revealed&&quote&&!quote.review;
@@ -13,9 +13,10 @@ export function BookingSummary({config,input,quote,selectedSlot,revealed}:{confi
     setExpanded(!expanded);
     if(fromBar&&!expanded)requestAnimationFrame(()=>summary.current?.scrollIntoView({behavior:'smooth',block:'start'}));
   }
-  return <><aside className="booking-summary" id="price-summary" ref={summary} aria-label="Your cleaning summary">
+  if(compact&&!revealed)return null;
+  return <><aside className={compact?'booking-summary compact-summary':'booking-summary'} id="price-summary" ref={summary} aria-label="Your cleaning summary">
     <div className="summary-desktop-title"><p className="eyebrow">Your home, handled.</p><h2>Your cleaning</h2></div>
-    <button className="summary-toggle" type="button" onClick={()=>toggle()} aria-expanded={expanded} aria-controls="price-summary-details"><span>Your cleaning<small>{expanded?'Hide details':'View details'}</small></span><ChevronDown size={20} className={expanded?'rotated':''}/></button>
+    <button className="summary-toggle" type="button" onClick={()=>toggle()} aria-expanded={expanded} aria-controls="price-summary-details"><span>Your cleaning<small>{expanded?'Hide details':'View details'}</small></span>{compact&&priced&&<strong>{money(quote.total)}</strong>}<ChevronDown size={20} className={expanded?'rotated':''}/></button>
     <div className="summary-details" id="price-summary-details" data-expanded={expanded}>
       {!revealed?<p className="summary-empty">Tell us about your home to see your price. No calls or estimates to wait for.</p>:priced?<>
         <div className="summary-row"><span>{serviceNames[input.service]}</span><span>{money(quote.base)}</span></div>

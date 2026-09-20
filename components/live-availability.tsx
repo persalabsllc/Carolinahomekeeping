@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {ArrowUpRight,CalendarDays} from 'lucide-react';
 import {HIGHLIGHT_REFRESH_MS,HIGHLIGHT_MAX_AGE_MS,unavailableHighlights,type AvailabilityHighlights} from '@/lib/availability-highlights';
 
-export function LiveAvailability({initial}:{initial:AvailabilityHighlights}){
+export function LiveAvailability({initial,bookingHref='/book'}:{initial:AvailabilityHighlights;bookingHref?:string}){
   const [value,setValue]=useState(initial);
   useEffect(()=>{
     let alive=true;
@@ -42,7 +42,7 @@ export function LiveAvailability({initial}:{initial:AvailabilityHighlights}){
   },[value]);
   const available=value.status==='available'&&value.slots.length>0;
   return <section className="container availability-highlight" id="upcoming-openings" aria-labelledby="availability-heading" data-state={value.status}>
-    <div className="availability-intro"><p className="eyebrow">A little room in your week</p><h2 id="availability-heading">{available?'Upcoming openings.':'Find your next clean.'}</h2><Link href="/book" className="text-link">Get my instant price <ArrowUpRight size={17} aria-hidden="true"/></Link></div>
+    <div className="availability-intro"><p className="eyebrow">A little room in your week</p><h2 id="availability-heading">{available?'Upcoming openings.':'Find your next clean.'}</h2><Link href={bookingHref} className="text-link">Get my instant price <ArrowUpRight size={17} aria-hidden="true"/></Link></div>
     <div className="availability-detail" aria-live="polite" aria-atomic="true">
       {available?<><p className="availability-live"><span aria-hidden="true"/>From our live calendar</p><div className="availability-options">{value.slots.map(slot=><div className="availability-option" key={slot.startsAt}><CalendarDays size={23} strokeWidth={1.4} aria-hidden="true"/><div><h3>{slot.label}</h3><p><time dateTime={slot.startsAt}>{slot.dateLabel} · {slot.timeLabel} start</time></p></div></div>)}</div><p className="availability-note">Standard-clean openings, Eastern time. Final options depend on your home, extras and frequency.</p>{!value.bookingOpen&&<p className="availability-note">See your price and send us your preferred appointment. We’ll confirm it with you before any payment.</p>}</>:<p className="availability-empty">{value.status==='full'?'Looking for a time? See your price and check the calendar for more dates.':'See your instant price, then check available times for your cleaning.'}</p>}
     </div>

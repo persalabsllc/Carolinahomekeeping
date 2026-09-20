@@ -1,4 +1,5 @@
 /* Coastal glass: solid, readable foundations with progressive translucency. */
+.booking-page:not(.campaign-booking) .booking-access>summary {display:none;}
 :root {
   --teal: #236f73;
   --cream: #f7faf8;

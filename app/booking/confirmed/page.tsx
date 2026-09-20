@@ -1,6 +1,1 @@
-import {getConfig} from '@/lib/config';
-import {Suspense} from 'react';
-import {Confirmation} from '@/components/confirmation';
-export const metadata={title:'Your Booking',robots:{index:false,follow:false}};
-export const dynamic='force-dynamic';
-export default async function Confirmed(){const config=await getConfig();return <Suspense fallback={<p className="loading">Checking your booking…</p>}><Confirmation discounts={config.discounts}/></Suspense>;}
+import {defaultConfig} from '@/lib/pricing';import {Suspense} from 'react';import {Confirmation} from '@/components/confirmation';export const metadata={robots:{index:false,follow:false}};export default function Confirmed(){return <Suspense fallback={<p>Checking…</p>}><Confirmation discounts={defaultConfig.discounts}/></Suspense>}

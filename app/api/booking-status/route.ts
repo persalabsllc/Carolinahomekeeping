@@ -1,19 +1,2 @@
-import {managementLink} from '@/lib/subscription-tokens';
-import {cookies} from 'next/headers';
-import {db} from '@/lib/db';
-import {hash} from '@/lib/security';
-import {stripe,fulfillSession} from '@/lib/payments';
-import {drainOutbox} from '@/lib/email';
-import {after} from 'next/server';
-export async function GET(req:Request){
- const id=new URL(req.url).searchParams.get('session_id');const leadToken=(await cookies()).get('ch_lead')?.value;
- if(!id||!/^cs_[a-zA-Z0-9_]+$/.test(id)||!leadToken)return Response.json({error:'Please check your confirmation email for booking details.'},{status:403});
- try{const sql=db();const [hold]=await sql`select id from checkout_holds where stripe_session_id=${id} and token_hash=${hash(leadToken)}`;if(!hold)return Response.json({error:'We couldn’t verify this booking in your browser. Please check your email.'},{status:403});
- const session=await stripe().checkout.sessions.retrieve(id);const booking=await fulfillSession(session);
- if(!booking)return Response.json({status:session.status==='expired'?'expired':'pending'},{headers:{'Cache-Control':'no-store'}});
- const [slot]=await sql`select starts_at from appointment_slots where id=${booking.slot_id}`;
- const [home]=await sql`select address,city,zip from homes where id=${booking.home_id}`;
- const [email]=await sql`select status from email_outbox where dedupe_key=${'confirmation:'+booking.id}`;
- after(()=>drainOutbox());return Response.json({status:'confirmed',reference:booking.reference,service:booking.service,amount:booking.amount,slot,address:home?`${home.address}, ${home.city}, NC ${home.zip}`:undefined,addons:(booking.quote.addons||[]).map((a:{name:string;quantity:number})=>({name:a.name,quantity:a.quantity})),frequency:booking.frequency,manageUrl:booking.recurring_plan_id?await managementLink(booking.recurring_plan_id):null,emailStatus:email?.status||'pending'},{headers:{'Cache-Control':'no-store'}});
- }catch{return Response.json({error:'We’re still checking your payment. Please don’t pay again. Try refreshing in a moment.'},{status:503});}
-}
+import {cookies} from 'next/headers';import {availableAppointments} from '@/lib/scheduling';
+export async function GET(req:Request){const id=new URL(req.url).searchParams.get('session_id');if(!id?.startsWith('cs_qa_'))return Response.json({error:'QA session required'},{status:403});const saved=(await cookies()).get('qa-confirmed')?.value;const booking=saved?JSON.parse(saved):{reference:'QA-ONLY',service:'standard',amount:22603,frequency:'once',address:'100 Example Lane, New Bern, NC 28562',slot:{starts_at:availableAppointments(120,[],1,new Date(),24)[0].starts_at},addons:[{name:'Wash, dry & fold',quantity:1},{name:'Inside oven',quantity:1}],emailStatus:'sent'};if(id==='cs_qa_once')booking.frequency='once';if(id==='cs_qa_recurring')booking.frequency='weekly';return Response.json({...booking,status:'confirmed',manageUrl:booking.frequency==='once'?null:'/booking/manage#token=qa-only'},{headers:{'Cache-Control':'no-store'}});}

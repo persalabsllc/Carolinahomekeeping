@@ -1,0 +1,2 @@
+import {cookies} from 'next/headers';import {checkOrigin} from '@/lib/security';
+export async function POST(req:Request){checkOrigin(req);const {value}=await req.json();if(!['open','prelaunch','fail'].includes(value))return new Response('Invalid',{status:400});(await cookies()).set('qa-mode',value,{httpOnly:true,secure:true,sameSite:'lax',path:'/',maxAge:3600});return Response.json({ok:true});}

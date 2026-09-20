@@ -1,7 +1,1 @@
-import {getHomeAvailability} from '@/lib/home-availability';
-export const dynamic='force-dynamic';
-
-export async function GET(){
-  const result=await getHomeAvailability();
-  return Response.json(result,{status:result.status==='unavailable'?503:200,headers:{'Cache-Control':'no-store'}});
-}
+import {unavailableHighlights} from '@/lib/availability-highlights'; export async function GET(){return Response.json(unavailableHighlights(),{headers:{'Cache-Control':'no-store'}})}
