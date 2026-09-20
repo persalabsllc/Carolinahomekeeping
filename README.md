@@ -108,6 +108,6 @@ Before enabling live bookings, verify in an isolated test environment:
 - Abandoned checkout saved as a lead, commercial inquiry and scheduled commercial job.
 - Admin unauthorized access rejection; internal notes and access data never public.
 
-Keep test records out of the production database. Current execution results and launch dependencies are tracked in `docs/launch-status.md`.
+Use an isolated database for payment and booking tests. The initial deployment verification created two explicitly labeled private QA inquiry records, then closed them with do-not-contact notes; it created no bookings or customer records. Current execution results and launch dependencies are tracked in `docs/launch-status.md`.
 
 References: [Stripe fulfillment](https://docs.stripe.com/checkout/fulfillment), [Checkout Sessions](https://docs.stripe.com/api/checkout/sessions/create), [NCDOR Sales and Use Tax](https://www.ncdor.gov/taxes-forms/sales-and-use-tax).
