@@ -11,6 +11,7 @@ import {checkoutParameters} from '../lib/checkout-session';
 import {recoveryOffer} from '../lib/recovery';
 import {drainOutbox,EmailError,sendEmail} from '../lib/email';
 import {recordInvoice} from '../lib/subscription-store';
+import {repairRejectedEmailHeaders} from '../lib/email-repair';
 import type {ScheduleSql} from '../lib/schedule-store';
 const input:QuoteInput={zip:'28562',sqft:1500,bedrooms:3,bathrooms:2,pets:'none',condition:'maintained',emptyHome:false,service:'standard',frequency:'weekly',addons:{oven:1,laundry:1}};
 process.env.SESSION_SECRET='isolated-test-secret-with-more-than-32-characters';
@@ -99,6 +100,36 @@ test('outbox delivers once, retries transient errors with the same key, rejects 
   await drainOutbox({...options,transport:async()=>{assert.fail('Must not resend beyond provider idempotency window')}});assert.equal((await pg.query<any>("select status from email_outbox where dedupe_key='ambiguous'")).rows[0].status,'failed');
  }finally{await pg.close();}
 });
+test('legacy header repair rechecks eligibility, audits once and sends only the selected rejected email',async()=>{
+ const pg=await database(),sql=adapter(pg);try{
+  await pg.query("insert into settings(key,value) values('communications',$1) on conflict(key) do update set value=excluded.value",[JSON.stringify(config)]);
+  await lead(pg);await queueCommunications(sql,config,defaultConfig,true,now);
+  const [job]=(await pg.query<any>("select * from email_outbox where kind='recovery'")).rows;
+  await pg.query("update email_outbox set status='failed',attempts=1,first_attempt_at=now()-interval '26 hours',last_error='Provider rejected message; check email configuration.',headers=$2 where id=$1",[job.id,JSON.stringify(JSON.stringify(job.headers))]);
+  await assert.rejects(repairRejectedEmailHeaders(sql,job.id,'qa-admin',false),/no longer eligible/);
+  await pg.query('insert into email_preferences(email,unsubscribed_at) values($1,now()) on conflict(email) do update set unsubscribed_at=now()',[job.recipient]);
+  await assert.rejects(repairRejectedEmailHeaders(sql,job.id,'qa-admin',true),/no longer eligible/);
+  await pg.query('update email_preferences set unsubscribed_at=null where email=$1',[job.recipient]);
+  await pg.query("update email_outbox set provider_id='already-accepted' where id=$1",[job.id]);
+  await assert.rejects(repairRejectedEmailHeaders(sql,job.id,'qa-admin',true),/not eligible/);
+  await pg.query("update email_outbox set provider_id=null,attempts=2 where id=$1",[job.id]);
+  await assert.rejects(repairRejectedEmailHeaders(sql,job.id,'qa-admin',true),/not eligible/);
+  await pg.query("update email_outbox set attempts=1,expires_at=now()-interval '1 minute' where id=$1",[job.id]);
+  await assert.rejects(repairRejectedEmailHeaders(sql,job.id,'qa-admin',true),/no longer eligible/);
+  await pg.query('update email_outbox set expires_at=$2 where id=$1',[job.id,job.expires_at]);
+  await repairRejectedEmailHeaders(sql,job.id,'qa-admin',true);
+  await assert.rejects(repairRejectedEmailHeaders(sql,job.id,'qa-admin',true),/not eligible/);
+  await enqueueEmail(sql,{key:'unrelated-pending',to:'other@example.invalid',subject:'Must not send',html:'Test',kind:'owner_test'});
+  const ids:string[]=[];
+  const sent=await drainOutbox({sql:sql as any,bookingOpen:true,onlyId:job.id,transport:async(_to,_subject,_html,id,_text,headers)=>{ids.push(id);assert.equal(typeof headers,'object');assert.equal(headers!['List-Unsubscribe-Post'],'List-Unsubscribe=One-Click');return 'repaired-test';}});
+  assert.equal(sent.sent,1);assert.deepEqual(ids,[job.id]);
+  assert.equal((await pg.query<any>('select attempts from email_outbox where id=$1',[job.id])).rows[0].attempts,2);
+  assert.equal((await pg.query<any>("select status from email_outbox where dedupe_key='unrelated-pending'")).rows[0].status,'pending');
+  assert.equal((await pg.query('select * from audit_log where record_id=$1',[job.id])).rows.length,1);
+  await assert.rejects(repairRejectedEmailHeaders(sql,job.id,'qa-admin',true),/not eligible/);
+ }finally{await pg.close();}
+});
+
 test('initial discounted subscription invoice is matched against the first booking, while renewals match the undiscounted plan',async()=>{
  const pg=await database(),sql=adapter(pg);try{
   const fixtureData=await fixture(pg,at(48)),regular=calculateQuote(input,defaultConfig),discounted=applyRecoveryQuote(regular,10);

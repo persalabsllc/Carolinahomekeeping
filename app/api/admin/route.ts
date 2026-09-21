@@ -11,6 +11,8 @@ import {db} from '@/lib/db';
 import {configSchema} from '@/lib/pricing';
 import {checkOrigin,apiError} from '@/lib/security';
 import {drainOutbox} from '@/lib/email';
+import {repairRejectedEmailHeaders} from '@/lib/email-repair';
+import {canBook} from '@/lib/config';
 import {reconcileHolds} from '@/lib/payments';
 import {randomBytes} from 'node:crypto';
 import {getScheduling,lockSchedule,readOccupancy,reserveInterval,getScheduleSnapshot} from '@/lib/schedule-store';
@@ -20,6 +22,12 @@ const eastern=(s:string)=>fromZonedTime(s+':00','America/New_York').toISOString(
 export async function POST(req:Request){try{
  checkOrigin(req);const actor=await requireAdmin();const input=await req.json();const sql=db();
  switch(input.action){
+ case 'repair_email_headers':{
+  const p=z.object({id:z.uuid(),confirmedProvider422:z.literal(true)}).parse(input);
+  await sql.begin(async tx=>{await repairRejectedEmailHeaders(tx,p.id,actor,canBook());});
+  const email=await drainOutbox({onlyId:p.id});
+  return Response.json({ok:true,email});
+ }
  case 'communications':{const current=await getCommunications(sql);const config=communicationSchema.parse({...input.config,enabledAt:current.enabledAt});await sql`update settings set value=${sql.json(config)},updated_at=now() where key='communications'`;break;}
  case 'email_test':{const config=await getCommunications(sql);await enqueueEmail(sql,{key:'owner-test:'+randomBytes(16).toString('hex'),to:config.ownerEmail,subject:'Your Carolina Homekeeping emails are connected',html:emailTemplate('Your email connection is working.','<p>This test was requested from your Control Room. Booking alerts will arrive at this address when a new booking is confirmed.</p>'),kind:'owner_test'});break;}
  case 'pricing':{const config=configSchema.parse(input.config);await sql`insert into settings(key,value) values('pricing',${sql.json(config)}) on conflict(key) do update set value=excluded.value,updated_at=now()`;break;}

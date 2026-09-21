@@ -10,14 +10,14 @@ export async function sendEmail(to:string,subject:string,html:string,key:string,
  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify({from:process.env.EMAIL_FROM,to:[to],subject,html,text:text||textFromHtml(html),headers,reply_to:process.env.SUPPORT_EMAIL||undefined}),signal:AbortSignal.timeout(10000)});
  if(!r.ok)throw new EmailError(r.status);const result=await r.json();return String(result.id);
 }
-export async function drainOutbox(options:{sql?:ReturnType<typeof db>;transport?:typeof sendEmail;bookingOpen?:boolean}={}){
+export async function drainOutbox(options:{sql?:ReturnType<typeof db>;transport?:typeof sendEmail;bookingOpen?:boolean;onlyId?:string}={}){
  if(!process.env.RESEND_API_KEY||!process.env.EMAIL_FROM)return {sent:0};
- const sql=options.sql||db(),config=await getCommunications(sql);let sent=0;
+ const sql=options.sql||db(),config=await getCommunications(sql),onlyId=options.onlyId||null;let sent=0;
  // Resend retains idempotency keys for 24h. Never retry an ambiguous send past 23h.
- await sql`update email_outbox set status='failed',last_error='Retry window ended; inspect delivery status before retrying.' where status in ('pending','sending') and (attempts>=10 or first_attempt_at<now()-interval '23 hours')`;
- await sql`update email_outbox set status='suppressed',last_error='This timed message is no longer relevant.' where status='pending' and expires_at<=now()`;
+ await sql`update email_outbox set status='failed',last_error='Retry window ended; inspect delivery status before retrying.' where (${onlyId}::uuid is null or id=${onlyId}) and status in ('pending','sending') and (attempts>=10 or first_attempt_at<now()-interval '23 hours')`;
+ await sql`update email_outbox set status='suppressed',last_error='This timed message is no longer relevant.' where (${onlyId}::uuid is null or id=${onlyId}) and status='pending' and expires_at<=now()`;
  for(let n=0;n<8;n++){
-  const [item]=await sql`update email_outbox set status='sending',locked_at=now(),first_attempt_at=coalesce(first_attempt_at,now()),attempts=attempts+1 where id in (select id from email_outbox where (status='pending' or (status='sending' and locked_at<now()-interval '5 minutes')) and send_after<=now() and attempts<10 order by case when kind='recovery' then 2 when kind='feedback' then 1 else 0 end,send_after limit 1 for update skip locked) returning *`;
+  const [item]=await sql`update email_outbox set status='sending',locked_at=now(),first_attempt_at=coalesce(first_attempt_at,now()),attempts=attempts+1 where id in (select id from email_outbox where (${onlyId}::uuid is null or id=${onlyId}) and (status='pending' or (status='sending' and locked_at<now()-interval '5 minutes')) and send_after<=now() and attempts<10 order by case when kind='recovery' then 2 when kind='feedback' then 1 else 0 end,send_after limit 1 for update skip locked) returning *`;
   if(!item)break;
   try{
    const {canBook}=await import('./config');
