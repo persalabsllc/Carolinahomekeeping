@@ -4,10 +4,13 @@ import {communicationSchema,communicationDefaults,type CommunicationConfig} from
 import {emailOrigin,emailToken} from './email-links';
 import {emailTemplate,emailButton,escapeHtml,appointmentDetails,ownerBookingEmail,textFromHtml} from './email-templates';
 import {calculateQuote,money,type PricingConfig} from './pricing';
+import {normalizeEmailHeaders} from './email-headers';
 export async function getCommunications(sql:ScheduleSql=db()):Promise<CommunicationConfig>{const [row]=await sql.unsafe("select value from settings where key='communications'");return communicationSchema.parse(row?.value||communicationDefaults);}
 type EmailJob={key:string;to:string;subject:string;html:string;kind:string;bookingId?:string;leadId?:string;start?:string;expires?:string;headers?:Record<string,string>};
+// Bind serialized JSON as text first: Postgres.js otherwise JSON-encodes the
+// already serialized string a second time when the parameter is typed JSONB.
 export async function enqueueEmail(sql:ScheduleSql,job:EmailJob){await sql.unsafe(`insert into email_outbox(dedupe_key,recipient,subject,html,plain_text,kind,booking_id,lead_id,scheduled_start,expires_at,headers)
- values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb) on conflict(dedupe_key) do nothing`,[job.key,job.to,job.subject,job.html,textFromHtml(job.html),job.kind,job.bookingId||null,job.leadId||null,job.start||null,job.expires||null,JSON.stringify(job.headers||{})]);}
+ values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::text::jsonb) on conflict(dedupe_key) do nothing`,[job.key,job.to,job.subject,job.html,textFromHtml(job.html),job.kind,job.bookingId||null,job.leadId||null,job.start||null,job.expires||null,JSON.stringify(normalizeEmailHeaders(job.headers))]);}
 async function unsubscribeUrl(sql:ScheduleSql,email:string,origin:string){const [p]=await sql.unsafe('insert into email_preferences(email) values($1) on conflict(email) do update set email=excluded.email returning id',[email]);return `${origin}/email/unsubscribe?token=${await emailToken('unsubscribe',p.id,'3650d')}`;}
 const iso=(value:any)=>new Date(value).toISOString();
 export function reminderDue(start:string,created:string,hours:number,now:Date){const due=Date.parse(start)-hours*3600000;return Date.parse(created)<=due&&now.getTime()>=due&&now.getTime()<due+30*60000;}

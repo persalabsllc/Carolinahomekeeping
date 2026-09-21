@@ -4,6 +4,8 @@ Production-oriented Next.js application for **Send A Scout LLC d/b/a Carolina Ho
 
 ## Stack and layout
 
+Email outbox headers are bound as `text` then cast to `jsonb` to avoid Postgres.js double serialization. The sender validates header objects and normalizes legacy JSON-string rows while preserving unsubscribe headers. HTTP validation/rejection codes are recorded without logging email contents or secrets. Failed rows are **not** automatically reopened by this repair: confirm rejection in Resend, recheck consent/expiry/payment eligibility, and retry only the intended row. Never bulk-resend ambiguous failures or reset their retry window without verifying provider delivery history. Regression tests cover the production driver's serialization and the actual HTTP payload using a mocked network transport.
+
 - Next.js 16 App Router, React 19, TypeScript. Coastal brand, responsive custom CSS, optimized supplied-logo derivative and generated interior photo.
 - Typography is self-hosted through `next/font/local` in `app/layout.tsx`: DM Sans declares its 100–1000 variable weight range in normal and italic styles; upright headings retain Libre Caslon Display and italic accents use Libre Caslon Text's real 400 italic. `app/typography.css` disables synthetic styles and leaves smoothing to the browser/OS. No text-blur, stroke or scaling hacks are used. Test font changes at desktop and 360–430px widths; operating-system font smoothing and native monitor resolution still affect appearance.
 - Postgres (dedicated Neon database), parameterized SQL through `postgres`.

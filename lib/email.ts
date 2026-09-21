@@ -1,10 +1,12 @@
 import {db} from './db';
 import {textFromHtml} from './email-templates';
 import {emailStillRelevant,getCommunications} from './communications';
+import {normalizeEmailHeaders} from './email-headers';
 export {escapeHtml} from './email-templates';
 export class EmailError extends Error{constructor(public status:number){super(`Email provider returned ${status}`);}}
 export async function sendEmail(to:string,subject:string,html:string,key:string,text?:string,headers?:Record<string,string>){
  if(!process.env.RESEND_API_KEY||!process.env.EMAIL_FROM)throw new Error('Email is not configured.');
+ try{headers=normalizeEmailHeaders(headers);}catch{throw new EmailError(422);}
  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify({from:process.env.EMAIL_FROM,to:[to],subject,html,text:text||textFromHtml(html),headers,reply_to:process.env.SUPPORT_EMAIL||undefined}),signal:AbortSignal.timeout(10000)});
  if(!r.ok)throw new EmailError(r.status);const result=await r.json();return String(result.id);
 }
@@ -24,7 +26,7 @@ export async function drainOutbox(options:{sql?:ReturnType<typeof db>;transport?
    await sql`update email_outbox set status='sent',sent_at=now(),provider_id=${id},last_error=null where id=${item.id}`;sent++;
   }catch(error){
    const permanent=error instanceof EmailError&&[400,401,403,404,409,422].includes(error.status);
-   await sql`update email_outbox set status=${permanent?'failed':'pending'},send_after=now()+${Math.min(120,5*2**Math.min(item.attempts-1,5))}*interval '1 minute',last_error=${permanent?'Provider rejected message; check email configuration.':'Delivery not confirmed; retry scheduled.'} where id=${item.id}`;
+   await sql`update email_outbox set status=${permanent?'failed':'pending'},send_after=now()+${Math.min(120,5*2**Math.min(item.attempts-1,5))}*interval '1 minute',last_error=${permanent?`Email validation or provider rejection (HTTP ${(error as EmailError).status}); inspect request configuration before retrying.`:'Delivery not confirmed; retry scheduled.'} where id=${item.id}`;
   }
  }
  return {sent};
